@@ -1,5 +1,5 @@
 {
-  "name": "StockRacer",
+  "name": "stockracer",
   "private": true,
   "workspaces": [
     "apps/*",

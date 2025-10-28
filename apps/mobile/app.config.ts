@@ -1,3 +1,7 @@
+import path from "path";
+import { config } from "dotenv";
+config({ path: path.resolve(__dirname, "../../.env") });
+
 export default {
   name: "StockRacer",
   slug: "stock-racer",
