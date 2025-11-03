@@ -6,6 +6,7 @@
     "packages/*"
   ],
   "scripts": {
+    "start": "npx expo start", 
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "build": "echo ok"
