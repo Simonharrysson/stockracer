@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { supabase } from '../auth/supabase';
-import type { Tables } from '../../../../../database.types';
+import { Database, type Tables } from '../../../../../database.types';
 
 function formatMarketCap(value: number | null | undefined): string {
   if (!value && value !== 0) return '';
@@ -13,10 +13,10 @@ function formatMarketCap(value: number | null | undefined): string {
   return `${value}`;
 }
 
+type Symbols = Database['public']['Tables']['symbols']['Row'][]
+
 export default function SymbolsList() {
-  const [symbols, setSymbols] = useState<
-    Pick<Tables<'symbols'>, 'symbol' | 'company_name' | 'logo' | 'marketCapitalization'>[]
-  >([]);
+  const [symbols, setSymbols] = useState<Symbols>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,15 +25,10 @@ export default function SymbolsList() {
     setError(null);
     const { data, error } = await supabase
       .from('symbols')
-      .select('symbol, company_name, logo, marketCapitalization')
+      .select('*')
       .order('marketCapitalization', { ascending: false, nullsFirst: false })
       .limit(500)
-      .returns<
-        Pick<
-          Tables<'symbols'>,
-          'symbol' | 'company_name' | 'logo' | 'marketCapitalization'
-        >[]
-      >();
+      .returns<Symbols>();
     if (error) {
       setError(error.message);
     } else {
@@ -79,6 +74,7 @@ export default function SymbolsList() {
     );
   }
 
+
   return (
     <FlatList
       data={symbols}
@@ -95,13 +91,33 @@ export default function SymbolsList() {
           <View style={styles.meta}>
             <View style={styles.titleLine}>
               <Text style={styles.symbol}>{item.company_name}</Text>
-              {item.marketCapitalization != null && (
-                <Text style={styles.marketCap}>{formatMarketCap(item.marketCapitalization)}</Text>
-              )}
+              <View style={styles.priceBlock}>
+                {typeof item.current_price === 'number' && (
+                  <Text style={styles.price}>${item.current_price.toFixed(2)}</Text>
+                )}
+                {typeof item.day_change_pct === 'number' && (
+                  <Text
+                    style={[
+                      styles.change,
+                      item.day_change_pct * 100 > 0
+                        ? styles.positive
+                        : item.day_change_pct * 100 < 0
+                          ? styles.negative
+                          : null,
+                    ]}
+                  >
+                    {item.day_change_pct * 100 > 0 ? '+' : ''}
+                    {(item.day_change_pct * 100).toFixed(2)}%
+                  </Text>
+                )}
+              </View>
             </View>
             <Text style={styles.company} numberOfLines={1}>
-              {item.symbol} – {formatMarketCap(item.marketCapitalization)}
+              {item.symbol}
             </Text>
+            {item.marketCapitalization != null && (
+              <Text style={styles.marketCap}>Mkt Cap {formatMarketCap(item.marketCapitalization)}</Text>
+            )}
           </View>
         </View>
       )}
@@ -139,6 +155,11 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
     justifyContent: 'space-between',
   },
+  priceBlock: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
   symbol: {
     fontSize: 16,
     fontWeight: '600',
@@ -148,6 +169,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6b7280',
     marginTop: 2,
+  },
+  price: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  change: {
+    fontSize: 12,
+  },
+  positive: {
+    color: '#059669',
+  },
+  negative: {
+    color: '#dc2626',
   },
   marketCap: {
     fontSize: 12,

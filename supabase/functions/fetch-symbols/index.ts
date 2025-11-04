@@ -37,6 +37,75 @@ function extractTickers(csvText: string): string[] {
   }).filter(Boolean);
 }
 
+type Quote = {
+  c?: number; // current
+  d?: number; // change
+  dp?: number; // percent change (percent units)
+  h?: number; // day high
+  l?: number; // day low
+  o?: number; // day open
+  pc?: number; // previous close
+  t?: number; // timestamp
+};
+
+async function fetchQuote(symbol: string): Promise<Quote> {
+  if (!FINNHUB_KEY) throw new Error("FINNHUB_API_KEY is not set");
+  const url =
+    `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_KEY}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Finnhub quote ${res.status}`);
+  return await res.json();
+}
+
+function isNum(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v);
+}
+
+async function saveTicker(
+  supabase: SupabaseClient,
+  summary: TickerSummary,
+  quote?: Quote,
+) {
+  const payload: Record<string, unknown> = {
+    symbol: summary.symbol,
+    company_name: summary.name,
+    currency: summary.currency,
+    description: summary.description,
+    exchange: summary.exchange,
+    logo: summary.logo,
+    marketCapitalization: summary.marketcap,
+  };
+
+  if (quote) {
+    const c = isNum(quote.c) ? quote.c : null;
+    const pc = isNum(quote.pc) ? quote.pc : null;
+
+    // direct fields
+    payload.current_price = c;
+    payload.prev_close = pc;
+    payload.day_open = isNum(quote.o) ? quote.o : null;
+    payload.day_high = isNum(quote.h) ? quote.h : null;
+    payload.day_low = isNum(quote.l) ? quote.l : null;
+
+    // change and percent change
+    const d = isNum(quote.d) ? quote.d : null;
+    const dp = isNum(quote.dp) ? quote.dp : null; // dp is percent units
+
+    payload.day_change = d;
+    payload.day_change_pct = dp;
+
+    // price time
+    payload.price_time = isNum(quote.t)
+      ? new Date(quote.t * 1000).toISOString()
+      : null;
+  }
+
+  const { error } = await supabase.from("symbols").upsert(payload, {
+    onConflict: "symbol",
+  });
+  if (error) throw new Error(`Failed to save ticker: ${error.message}`);
+}
+
 async function fetchProfile(symbol: string) {
   if (!FINNHUB_KEY) {
     throw new Error("FINNHUB_API_KEY is not set");
@@ -76,10 +145,6 @@ function formatTicker(
       profile.finnhubIndustry.trim().length > 0
     ? profile.finnhubIndustry.trim()
     : name;
-
-  // const price = typeof profile.sharePrice === "number"
-  //   ? profile.sharePrice
-  //   : null;
 
   return {
     symbol,
@@ -132,28 +197,6 @@ async function updateRefreshState(
     last_error,
   });
   if (error) console.error("update symbol_refresh_state:", error.message);
-}
-
-async function saveTicker(
-  supabase: SupabaseClient,
-  summary: TickerSummary,
-) {
-  const { error } = await supabase.from("symbols").upsert(
-    {
-      symbol: summary.symbol,
-      company_name: summary.name,
-      currency: summary.currency,
-      description: summary.description,
-      exchange: summary.exchange,
-      logo: summary.logo,
-      marketCapitalization: summary.marketcap,
-    },
-    { onConflict: "symbol" },
-  );
-
-  if (error) {
-    throw new Error(`Failed to save ticker to symbols table: ${error.message}`);
-  }
 }
 
 Deno.serve(async (request) => {
@@ -229,8 +272,11 @@ Deno.serve(async (request) => {
       try {
         const tickerjson = await fetchProfile(ticker);
         const summary = formatTicker(ticker, tickerjson);
-        await saveTicker(supabase, summary);
+
+        const quote = await fetchQuote(ticker);
+        await saveTicker(supabase, summary, quote);
         console.log(`Processed ticker: ${ticker}`);
+
         // finnhub rate limit: 60 requests per minute
         processed.push(ticker);
       } catch (error) {
