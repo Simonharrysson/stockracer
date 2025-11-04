@@ -11,7 +11,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const JSON_HEADERS = { "content-type": "application/json" };
 const DEFAULT_LIMIT = 2;
-const RATE_LIMIT_DELAY_MS = 1_100;
+const RATE_LIMIT_DELAY_MS = 1200;
+
 const STATE_ROW_ID = 1;
 
 type TickerSummary = {
@@ -76,6 +77,10 @@ function formatTicker(
     ? profile.finnhubIndustry.trim()
     : name;
 
+  // const price = typeof profile.sharePrice === "number"
+  //   ? profile.sharePrice
+  //   : null;
+
   return {
     symbol,
     ticker: typeof profile.ticker === "string" ? profile.ticker.trim() : symbol,
@@ -116,7 +121,10 @@ async function updateRefreshState(
   next_offset?: number,
   last_error?: string | null,
 ) {
-  console.log("Updating refresh state with:", { next_offset, last_error });
+  console.log("Updating refresh state with:", {
+    next_offset,
+    last_error,
+  });
   const { error } = await supabase.from("symbol_refresh_state").upsert({
     id: STATE_ROW_ID,
     next_offset: Math.max(0, Math.floor(next_offset ?? 0)),
@@ -179,20 +187,11 @@ Deno.serve(async (request) => {
 
     const shouldPersistOffset = manualOffset === 0;
 
-    console.log(
-      "manualOffset:",
-      manualOffset,
-      "shouldPersistOffset:",
-      shouldPersistOffset,
-    );
-
     const requestedLimit = qpLim > 1 ? Math.floor(qpLim) : DEFAULT_LIMIT;
 
     const currentOffset = shouldPersistOffset
       ? await fetchRefreshOffset(supabase)
       : manualOffset;
-
-    console.log("Current offset:", currentOffset);
 
     const maxAvailable = Math.max(tickers.length - currentOffset, 0);
 
@@ -223,24 +222,40 @@ Deno.serve(async (request) => {
     const processed: string[] = [];
 
     for (const symbol of slice) {
+      await new Promise((r) => setTimeout(r, RATE_LIMIT_DELAY_MS));
+
       const ticker = symbol.trim();
 
-      const tickerjson = await fetchProfile(ticker);
-      const summary = formatTicker(ticker, tickerjson);
-      await saveTicker(supabase, summary);
-      console.log(`Processed ticker: ${ticker}`);
-      // finnhub rate limit: 60 requests per minute
-      await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
-      processed.push(ticker);
+      try {
+        const tickerjson = await fetchProfile(ticker);
+        const summary = formatTicker(ticker, tickerjson);
+        await saveTicker(supabase, summary);
+        console.log(`Processed ticker: ${ticker}`);
+        // finnhub rate limit: 60 requests per minute
+        processed.push(ticker);
+      } catch (error) {
+        console.error(`Error processing ticker ${ticker}:`, error);
+        break;
+      }
     }
 
     console.log(
       `Processed ${processed.length} tickers (offset ${currentOffset}, limit ${limit}).`,
     );
 
+    const nextOffset = shouldPersistOffset
+      ? (currentOffset + processed.length)
+      : currentOffset;
+
     if (shouldPersistOffset) {
-      const nextOffset = (currentOffset + processed.length) % tickers.length;
       await updateRefreshState(supabase, nextOffset, null);
+    }
+
+    if (shouldPersistOffset && nextOffset < tickers.length) {
+      await supabase.rpc("kick_fetch_symbols", {
+        _limit: limit,
+        _auth: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"), // pass SRK directly
+      });
     }
 
     return new Response(
@@ -250,9 +265,7 @@ Deno.serve(async (request) => {
         count: tickers.length,
         offset: currentOffset,
         limit,
-        next_offset: shouldPersistOffset
-          ? (currentOffset + processed.length) % tickers.length
-          : currentOffset,
+        next_offset: nextOffset,
       }),
       { status: 200, headers: JSON_HEADERS },
     );
