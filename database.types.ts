@@ -65,28 +65,52 @@ export type Database = {
         Row: {
           company_name: string
           currency: string
+          current_price: number | null
+          day_change: number | null
+          day_change_pct: number | null
+          day_high: number | null
+          day_low: number | null
+          day_open: number | null
           description: string
           exchange: string
           logo: string | null
           marketCapitalization: number | null
+          prev_close: number | null
+          price_time: string | null
           symbol: string
         }
         Insert: {
           company_name: string
           currency: string
+          current_price?: number | null
+          day_change?: number | null
+          day_change_pct?: number | null
+          day_high?: number | null
+          day_low?: number | null
+          day_open?: number | null
           description: string
           exchange: string
           logo?: string | null
           marketCapitalization?: number | null
+          prev_close?: number | null
+          price_time?: string | null
           symbol: string
         }
         Update: {
           company_name?: string
           currency?: string
+          current_price?: number | null
+          day_change?: number | null
+          day_change_pct?: number | null
+          day_high?: number | null
+          day_low?: number | null
+          day_open?: number | null
           description?: string
           exchange?: string
           logo?: string | null
           marketCapitalization?: number | null
+          prev_close?: number | null
+          price_time?: string | null
           symbol?: string
         }
         Relationships: []
