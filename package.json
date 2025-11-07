@@ -11,7 +11,7 @@
     "typecheck": "tsc -b",
     "build": "echo ok",
     "sb:curl": "sh -c 'curl -sS -X POST ${SUPABASE_FUNCTION_URL_PREFIX:?set SUPABASE_FUNCTION_URL_PREFIX}/$npm_config_fn -H \"Content-Type: application/json\" -d \"${npm_config_data:-{}}\"'",
-    "supabase:gen-types": "supabase gen types typescript --local > ./packages/supabase/src/types/supabase.ts",
+    "supabase:gen-types:local": "supabase gen types typescript --local --schema public,auth,storage   > database.types.ts",
     "sb:deploy:fetch-symbols": "supabase functions deploy fetch-symbols"
   },
   "devDependencies": {
