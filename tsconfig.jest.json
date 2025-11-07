@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "types": ["jest", "node"]
+  },
+  "include": [
+    "supabase/**/*.ts",
+    "supabase/**/*.tsx",
+    "supabase/**/*.d.ts",
+    "**/*.test.ts"
+  ]
+}
