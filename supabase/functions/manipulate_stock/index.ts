@@ -4,6 +4,7 @@
 // Env: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.3";
+import type { Database } from "../../../database.types.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -17,7 +18,7 @@ type Payload = {
   executed_at?: string; // ISO optional
 };
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request): Promise<Response> => {
   try {
     if (req.method !== "POST") {
       return new Response("Only POST", { status: 405 });
@@ -52,14 +53,16 @@ Deno.serve(async (req) => {
     }
     const user_id = userRes.user.id;
 
-    const { error: insErr } = await userClient.from("transactions").insert({
-      user_id,
-      symbol,
-      side,
-      quantity: qty,
-      price,
-      executed_at: body.executed_at ?? new Date().toISOString(),
-    });
+    const { error: insErr } = await userClient
+      .from("transactions")
+      .insert({
+        user_id,
+        symbol,
+        side,
+        quantity: qty,
+        price,
+        executed_at: body.executed_at ?? new Date().toISOString(),
+      });
     if (insErr) {
       return new Response(`Insert failed: ${insErr.message}`, { status: 400 });
     }
@@ -70,7 +73,7 @@ Deno.serve(async (req) => {
     // Pull all transactions for this user, oldest first
     const { data: txs, error: txErr } = await admin
       .from("transactions")
-      .select("symbol, side, quantity, price")
+      .select("symbol, side, quantity, price, executed_at")
       .eq("user_id", user_id)
       .order("executed_at", { ascending: true });
     if (txErr) throw txErr;
@@ -79,7 +82,17 @@ Deno.serve(async (req) => {
     type Lot = { qty: number; cost: number }; // cost is total basis for remaining qty
     const lots = new Map<string, Lot>();
 
-    for (const t of txs ?? []) {
+    for (
+      const t of (txs as
+        | Array<
+          Pick<
+            Database["public"]["Tables"]["transactions"]["Row"],
+            "symbol" | "side" | "quantity" | "price" | "executed_at"
+          >
+        >
+        | null) ?? []
+    ) {
+      if (!t) continue;
       const s = String(t.symbol).toUpperCase();
       const q = Number(t.quantity);
       const p = Number(t.price);
@@ -116,8 +129,22 @@ Deno.serve(async (req) => {
         .in("symbol", openSymbols);
       if (qErr) throw qErr;
 
-      const qMap = new Map(
-        quotes?.map((r) => [String(r.symbol).toUpperCase(), r]) ?? [],
+      const qMap = new Map<
+        string,
+        Pick<
+          Database["public"]["Tables"]["symbols"]["Row"],
+          "symbol" | "current_price" | "prev_close"
+        >
+      >(
+        (quotes as
+          | Array<
+            Pick<
+              Database["public"]["Tables"]["symbols"]["Row"],
+              "symbol" | "current_price" | "prev_close"
+            >
+          >
+          | null)
+          ?.map((r) => [String(r.symbol).toUpperCase(), r]) ?? [],
       );
 
       for (const s of openSymbols) {
@@ -145,18 +172,20 @@ Deno.serve(async (req) => {
       : 0;
 
     // Upsert portfolio row
-    const { error: upErr } = await admin.from("portfolios").upsert({
-      user_id,
-      tickers: openSymbols,
-      total_worth: Number(totalWorth.toFixed(6)),
-      total_invested: Number(totalInvested.toFixed(6)),
-      unrealized_pnl: Number(unrealized.toFixed(6)),
-      total_change_pct: Number(totalChangePct.toFixed(6)),
-      last_change_pct: Number(lastChangePct.toFixed(6)),
-      position_count: openSymbols.length,
-      last_trade_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
+    const { error: upErr } = await admin
+      .from("portfolios")
+      .upsert({
+        user_id,
+        tickers: openSymbols,
+        total_worth: Number(totalWorth.toFixed(6)),
+        total_invested: Number(totalInvested.toFixed(6)),
+        unrealized_pnl: Number(unrealized.toFixed(6)),
+        total_change_pct: Number(totalChangePct.toFixed(6)),
+        last_change_pct: Number(lastChangePct.toFixed(6)),
+        position_count: openSymbols.length,
+        last_trade_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
     if (upErr) throw upErr;
 
     return new Response(
