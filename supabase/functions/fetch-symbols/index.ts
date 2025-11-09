@@ -321,7 +321,10 @@ Deno.serve(async (request) => {
       try {
         const supabase = getSupabaseClient();
         await updateRefreshState(supabase, undefined, message);
-      } catch (_) { /* ignore */ }
+      } catch (e) {
+        // ignore
+        console.error("Also failed to update error state in database", e);
+      }
     }
     return new Response(
       JSON.stringify({ ok: false, error: message }),

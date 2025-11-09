@@ -7,7 +7,8 @@
   ],
   "scripts": {
     "start": "npx expo start",
-    "lint": "eslint .",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint . && deno lint supabase/functions/tests/*",
+    "test": "deno test --allow-all --env-file=./supabase/.env supabase/functions/tests/*",
     "typecheck": "tsc -b",
     "build": "echo ok",
     "sb:curl": "sh -c 'curl -sS -X POST ${SUPABASE_FUNCTION_URL_PREFIX:?set SUPABASE_FUNCTION_URL_PREFIX}/$npm_config_fn -H \"Content-Type: application/json\" -d \"${npm_config_data:-{}}\"'",
