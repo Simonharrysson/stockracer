@@ -260,6 +260,84 @@ Deno.test("📈 Stock 'manipulate-stock' function integration test", {
     );
   });
 
+  await t.step("Invalid symbol payload (failure case)", async () => {
+    const body = {
+      symbol: "", // Invalid symbol
+      quantity: 1, // Valid quantity
+      side: "BUY", // Valid side
+      price: 100, // Valid price
+    };
+
+    // Call function with invalid payload
+    const { data } = await userClient.functions.invoke(
+      "manipulate-stock",
+      { body },
+    );
+    assert(
+      data.error,
+      "Function should have returned an error for invalid payload",
+    );
+  });
+
+  await t.step("Invalid quantity payload (failure case)", async () => {
+    const body = {
+      symbol: symbolToTest,
+      quantity: -1, // Invalid quantity
+      side: "BUY", // Invalid side
+      price: 100, // Invalid price
+    };
+
+    // Call function with invalid payload
+    const { data } = await userClient.functions.invoke(
+      "manipulate-stock",
+      { body },
+    );
+    assert(
+      data.error,
+      "Function should have returned an error for invalid payload",
+    );
+  });
+
+  await t.step("Invalid side payload (failure case)", async () => {
+    const body = {
+      symbol: symbolToTest,
+      quantity: 1, // Invalid quantity
+      side: "TEST", // Invalid side
+      price: 100, // Invalid price
+    };
+
+    // Call function with invalid payload
+    const { data } = await userClient.functions.invoke(
+      "manipulate-stock",
+      { body },
+    );
+    assert(
+      data.error,
+      "Function should have returned an error for invalid payload: " +
+        data.error,
+    );
+  });
+
+  await t.step("Invalid price payload (failure case)", async () => {
+    const body = {
+      symbol: symbolToTest,
+      quantity: 1, // Invalid quantity
+      side: "BUY", // Invalid side
+      price: -100, // Invalid price
+    };
+
+    // Call function with invalid payload
+    const { data } = await userClient.functions.invoke(
+      "manipulate-stock",
+      { body },
+    );
+    assert(
+      data.error,
+      "Function should have returned an error for invalid payload: " +
+        data.error,
+    );
+  });
+
   await t.step("Teardown: Clean up test user", async () => {
     console.log(`  🧹 Tearing down... deleting test user ${user.id}...`);
 
