@@ -1,5 +1,6 @@
 import path from "path";
 import { config } from "dotenv";
+import process from "node:process";
 config({ path: path.resolve(__dirname, "../../.env") });
 
 export default {
