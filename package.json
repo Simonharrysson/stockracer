@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "start": "npx expo start",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint . && deno lint supabase/functions/tests/*",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint . && deno lint && yarn test",
     "test": "deno test --allow-all --env-file=./supabase/.env supabase/functions/tests/*",
     "typecheck": "tsc -b",
     "build": "echo ok",
