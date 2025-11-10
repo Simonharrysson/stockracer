@@ -4,6 +4,7 @@ import {
   SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2.45.3";
 import type { Database } from "../../../database.types.ts";
+import { PostgrestError } from "https://esm.sh/@supabase/postgrest-js@1.15.8/dist/cjs/types.js";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -16,6 +17,8 @@ export type Payload = {
   price: number;
   executed_at?: string;
 };
+
+type Holding = { qty: number; cost: number };
 
 export interface FunctionResponse {
   success: boolean;
@@ -102,24 +105,10 @@ function makeHandler(deps: Deps) {
       }
       const user_id = userRes.user.id;
 
-      const { error: insErr } = await userClient.from("transactions").insert({
-        user_id,
-        symbol,
-        side,
-        quantity: qty,
-        price,
-        executed_at: body.executed_at ?? new Date().toISOString(),
-      });
-      if (insErr) {
-        const errorBody: FunctionResponse = {
-          success: false,
-          error: "Failed to record transaction: " + insErr.message,
-        };
-        return errorBody;
-      }
+      type Holding = { qty: number; cost: number };
+      const holdings = new Map<string, Holding>();
 
-      // const admin = deps.adminClient();
-      console.log(`Recalculating portfolio for user ${user_id}...`);
+      // Build current holdings from existing transactions.
       const { data: txs, error: txErr } = await userClient
         .from("transactions")
         .select("symbol, side, quantity, price, executed_at")
@@ -129,40 +118,78 @@ function makeHandler(deps: Deps) {
       if (txErr) {
         const errorBody: FunctionResponse = {
           success: false,
-          error: "Failed to fetch transactions: " + txErr.message,
+          error: "Failed to fetch transactions for validation: " +
+            txErr.message,
         };
         return errorBody;
       }
 
-      type Lot = { qty: number; cost: number };
-      const lots = new Map<string, Lot>();
+      // 1. If we are selling shares, exit early if we don't have enough shares
+      if (side === "SELL") {
+        // If we can't find any transactions for this symbol, we can't be selling it
+        if (
+          !txs ||
+          !txs.find((t) =>
+            String(t.symbol).toUpperCase() === symbol.toUpperCase()
+          )
+        ) {
+          const errorBody: FunctionResponse = {
+            success: false,
+            error:
+              `Insufficient shares to sell for ${symbol}: trying to sell ${qty}, but have 0`,
+          };
 
-      for (const t of txs ?? []) {
-        const s = String(t.symbol).toUpperCase();
-        const q = Number(t.quantity);
-        const p = Number(t.price);
-        const lot = lots.get(s) ?? { qty: 0, cost: 0 };
-
-        if (t.side === "BUY") {
-          lot.qty += q;
-          lot.cost += q * p;
-        } else {
-          if (q > lot.qty) {
-            const errorBody: FunctionResponse = {
-              success: false,
-              error:
-                `Insufficient shares to sell for ${s}: trying to sell ${q}, but only have ${lot.qty}`,
-            };
-            return errorBody;
-          }
-          const avg = lot.qty > 0 ? lot.cost / lot.qty : 0;
-          lot.qty -= q;
-          lot.cost = avg * lot.qty;
+          return errorBody;
         }
-        lots.set(s, lot);
       }
 
-      const openSymbols = [...lots.entries()]
+      // 2. Calculate current holdings from existing transactions.
+      handleUpdateHoldings(txs, holdings);
+
+      // 3. VALIDATE the new trade against the current holdings.
+      if (side === "SELL") {
+        const currentHolding = holdings.get(symbol) ?? { qty: 0, cost: 0 };
+        if (qty > currentHolding.qty) {
+          console.error(
+            `Insufficient shares for ${symbol}: trying ${qty}, have ${currentHolding.qty}`,
+          );
+          const errorBody: FunctionResponse = {
+            success: false,
+            error:
+              `Insufficient shares to sell for ${symbol}: trying to sell ${qty}, but only have ${currentHolding.qty}`,
+          };
+          return errorBody;
+        }
+      }
+
+      // 4. If validation passed, NOW insert the new transaction.
+      const { error: insErr } = await userClient.from("transactions").insert({
+        user_id,
+        symbol,
+        side,
+        quantity: qty,
+        price,
+        executed_at: body.executed_at ?? new Date().toISOString(),
+      });
+      if (insErr) {
+        return handleError(insErr);
+      }
+
+      // 5. Update the in-memory 'holdings' map with the new, valid trade.
+      const holding = holdings.get(symbol) ?? { qty: 0, cost: 0 };
+      if (side === "BUY") {
+        holding.qty += qty;
+        holding.cost += qty * price; // Corrected logic
+      } else {
+        // We already know this is safe from step 3.
+        holding.qty -= qty;
+        holding.cost -= qty * price;
+      }
+      holdings.set(symbol, holding);
+      console.log("after", holdings);
+
+      // The rest of the logic continues from here, using the updated 'holdings' map.
+      const openSymbols = [...holdings.entries()]
         .filter(([, v]) => v.qty > 0)
         .map(([s]) => s);
 
@@ -176,11 +203,7 @@ function makeHandler(deps: Deps) {
           .select("symbol, current_price, prev_close")
           .in("symbol", openSymbols);
         if (qErr) {
-          const errorBody: FunctionResponse = {
-            success: false,
-            error: "Failed to fetch quotes: " + qErr.message,
-          };
-          return errorBody;
+          return handleError(qErr);
         }
 
         const qMap = new Map(
@@ -188,27 +211,44 @@ function makeHandler(deps: Deps) {
         );
 
         for (const s of openSymbols) {
-          const lot = lots.get(s)!;
-          const q = qMap.get(s);
-          const cp = Number(
-            q?.current_price ??
-              (lot.cost > 0 && lot.qty > 0 ? lot.cost / lot.qty : 0),
-          );
-          const pc = Number(q?.prev_close ?? cp);
+          const holding = holdings.get(s)!;
+          const quote = qMap.get(s);
 
-          totalWorth += lot.qty * cp;
-          yesterdayWorth += lot.qty * pc;
-          totalInvested += lot.cost;
+          if (!quote?.current_price || !quote?.prev_close) {
+            return handleError(
+              new Error("Missing current price or prev_close for " + s),
+            );
+          }
+
+          const current_price = quote.current_price;
+          const prev_close = quote.prev_close;
+
+          totalWorth += holding.qty * current_price;
+          yesterdayWorth += holding.qty * prev_close;
+          totalInvested += holding.cost;
         }
       }
 
       const unrealized = totalWorth - totalInvested;
+
+      if (totalInvested < 0) {
+        return handleError(new Error("Negative investet amount"));
+      }
+
       const totalChangePct = totalInvested > 0
         ? (totalWorth - totalInvested) / totalInvested
         : 0;
+
       const lastChangePct = yesterdayWorth > 0
         ? (totalWorth - yesterdayWorth) / yesterdayWorth
         : 0;
+
+      console.log(
+        "totalChangePct: ",
+        totalChangePct,
+        "lastChangePct: ",
+        lastChangePct,
+      );
 
       const { error: upErr } = await userClient.from("portfolios").upsert({
         user_id,
@@ -223,11 +263,7 @@ function makeHandler(deps: Deps) {
         updated_at: new Date().toISOString(),
       });
       if (upErr) {
-        const errorBody: FunctionResponse = {
-          success: false,
-          error: "Failed to update portfolio: " + upErr.message,
-        };
-        return errorBody;
+        return handleError(upErr);
       }
 
       console.log(`Portfolio updated successfully for user ${user_id}`);
@@ -266,3 +302,38 @@ if (import.meta.main) {
   });
 }
 export { makeHandler };
+
+function handleError(Err: PostgrestError | Error) {
+  const errorBody: FunctionResponse = {
+    success: false,
+    error: "Failed with error message: " + Err.message,
+  };
+  return errorBody;
+}
+
+function handleUpdateHoldings(
+  txs: Payload[],
+  holdings: Map<string, { qty: number; cost: number }>,
+) {
+  for (const t of txs ?? []) {
+    const symbol = String(t.symbol).toUpperCase();
+    const quantity = Number(t.quantity);
+    const price = Number(t.price);
+    const holding = holdings.get(symbol) ?? { qty: 0, cost: 0 };
+    console.log(t);
+    if (t.side === "BUY") {
+      holding.qty += quantity;
+      // This is the corrected cost logic
+      holding.cost += quantity * price;
+    } else if (t.side === "SELL") {
+      // Get average cost *before* changing quantity
+
+      holding.qty -= quantity;
+
+      // New cost is the new quantity * the old average cost
+      holding.cost -= quantity * price;
+    }
+    holdings.set(symbol, holding);
+  }
+  console.log("before:", holdings);
+}
