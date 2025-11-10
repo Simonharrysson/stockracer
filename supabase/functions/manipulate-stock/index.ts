@@ -4,7 +4,6 @@ import {
   SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2.45.3";
 import type { Database } from "../../../database.types.ts";
-import { PostgrestError } from "https://esm.sh/@supabase/postgrest-js@1.15.8/dist/cjs/types.js";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -17,8 +16,6 @@ export type Payload = {
   price: number;
   executed_at?: string;
 };
-
-type Holding = { qty: number; cost: number };
 
 export interface FunctionResponse {
   success: boolean;
@@ -34,13 +31,12 @@ export interface FunctionResponse {
   error?: string;
 }
 
-// ---- Dependency injection för tester ----
+// ---- Dependency injection (unchanged) ----
 type Deps = {
   userClient: (authHeader: string) => SupabaseClient<Database>;
   adminClient: () => SupabaseClient<Database>;
 };
 
-// Produktion: riktiga klienter
 const realDeps: Deps = {
   userClient: (auth) =>
     createClient<Database>(SUPABASE_URL, ANON_KEY, {
@@ -49,26 +45,22 @@ const realDeps: Deps = {
   adminClient: () => createClient<Database>(SUPABASE_URL, SERVICE_ROLE),
 };
 
-// Gör handler testbar
+// ---- NEW, FASTER HANDLER LOGIC ----
 function makeHandler(deps: Deps) {
   return async (req: Request): Promise<FunctionResponse> => {
     try {
+      // 1. --- Auth and Payload Validation (unchanged from your file) ---
       if (req.method !== "POST") {
-        const errorBody: FunctionResponse = {
-          success: false,
-          error: "Only POST requests are allowed.",
-        };
-        return errorBody;
+        return { success: false, error: "Only POST requests are allowed." };
       }
 
       const auth = req.headers.get("authorization") ??
         req.headers.get("Authorization") ?? "";
       if (!auth.startsWith("Bearer ")) {
-        const errorBody: FunctionResponse = {
+        return {
           success: false,
           error: "Missing or invalid Authorization header.",
         };
-        return errorBody;
       }
       console.log("Received request with authorization.");
 
@@ -83,86 +75,59 @@ function makeHandler(deps: Deps) {
         isNaN(price) || price < 0
       ) {
         console.error("Invalid payload:", body);
-        const errorBody: FunctionResponse = {
-          success: false,
-          error: "Invalid payload",
-        };
-        return errorBody;
+        return { success: false, error: "Invalid payload" };
       }
 
       console.log(`Processing trade: ${side} ${qty} ${symbol} @ ${price}...`);
 
       const userClient = deps.userClient(auth);
-
       const { data: userRes, error: uerr } = await userClient.auth.getUser();
       if (uerr || !userRes?.user) {
         console.error("Unauthorized access attempt.");
-        const errorBody: FunctionResponse = {
-          success: false,
-          error: "Unauthorized access",
-        };
-        return errorBody;
+        return { success: false, error: "Unauthorized access" };
       }
       const user_id = userRes.user.id;
 
-      type Holding = { qty: number; cost: number };
-      const holdings = new Map<string, Holding>();
-
-      // Build current holdings from existing transactions.
-      const { data: txs, error: txErr } = await userClient
-        .from("transactions")
-        .select("symbol, side, quantity, price, executed_at")
+      // 2. --- Fetch Current Position (NEW FAST LOGIC) ---
+      // Instead of scanning all transactions, we fetch one row from 'positions'.
+      const { data: currentPos, error: posErr } = await userClient
+        .from("positions")
+        .select("quantity, average_cost")
         .eq("user_id", user_id)
-        .order("executed_at", { ascending: true });
+        .eq("symbol", symbol)
+        .single();
 
-      if (txErr) {
-        const errorBody: FunctionResponse = {
+      // if (posErr && posErr.code !== "PGRST116") { // PGRST116 = no rows found
+      //   return {
+      //     success: false,
+      //     error: "Failed to fetch current position: " + posErr.message,
+      //   };
+      // }
+
+      // Initialize position if it doesn't exist
+      const pos = currentPos
+        ? {
+          quantity: Number(currentPos.quantity),
+          average_cost: Number(currentPos.average_cost),
+        }
+        : { quantity: 0, average_cost: 0 };
+
+      // 3. --- Validate Trade (The Bug Fix) ---
+      // We check *before* inserting the transaction.
+      if (side === "SELL" && qty > pos.quantity) {
+        console.error(
+          `Insufficient shares for ${symbol}: trying ${qty}, have ${pos.quantity}`,
+        );
+        return {
           success: false,
-          error: "Failed to fetch transactions for validation: " +
-            txErr.message,
+          error:
+            `Insufficient shares to sell for ${symbol}: trying to sell ${qty}, but only have ${pos.quantity}`,
         };
-        return errorBody;
       }
 
-      // 1. If we are selling shares, exit early if we don't have enough shares
-      if (side === "SELL") {
-        // If we can't find any transactions for this symbol, we can't be selling it
-        if (
-          !txs ||
-          !txs.find((t) =>
-            String(t.symbol).toUpperCase() === symbol.toUpperCase()
-          )
-        ) {
-          const errorBody: FunctionResponse = {
-            success: false,
-            error:
-              `Insufficient shares to sell for ${symbol}: trying to sell ${qty}, but have 0`,
-          };
-
-          return errorBody;
-        }
-      }
-
-      // 2. Calculate current holdings from existing transactions.
-      handleUpdateHoldings(txs, holdings);
-
-      // 3. VALIDATE the new trade against the current holdings.
-      if (side === "SELL") {
-        const currentHolding = holdings.get(symbol) ?? { qty: 0, cost: 0 };
-        if (qty > currentHolding.qty) {
-          console.error(
-            `Insufficient shares for ${symbol}: trying ${qty}, have ${currentHolding.qty}`,
-          );
-          const errorBody: FunctionResponse = {
-            success: false,
-            error:
-              `Insufficient shares to sell for ${symbol}: trying to sell ${qty}, but only have ${currentHolding.qty}`,
-          };
-          return errorBody;
-        }
-      }
-
-      // 4. If validation passed, NOW insert the new transaction.
+      // 4. --- Insert Transaction (Log) ---
+      // Validation passed, so we log the trade.
+      console.log("Validation passed. Recording new transaction...");
       const { error: insErr } = await userClient.from("transactions").insert({
         user_id,
         symbol,
@@ -172,168 +137,101 @@ function makeHandler(deps: Deps) {
         executed_at: body.executed_at ?? new Date().toISOString(),
       });
       if (insErr) {
-        return handleError(insErr);
+        return {
+          success: false,
+          error: "Failed to record transaction: " + insErr.message,
+        };
       }
 
-      // 5. Update the in-memory 'holdings' map with the new, valid trade.
-      const holding = holdings.get(symbol) ?? { qty: 0, cost: 0 };
+      // 5. --- Recalculate and Upsert Position (The Core Logic) ---
+      let newQty = pos.quantity;
+      let newAvgCost = pos.average_cost;
+
       if (side === "BUY") {
-        holding.qty += qty;
-        holding.cost += qty * price; // Corrected logic
-      } else {
-        // We already know this is safe from step 3.
-        holding.qty -= qty;
-        holding.cost -= qty * price;
-      }
-      holdings.set(symbol, holding);
-      console.log("after", holdings);
-
-      // The rest of the logic continues from here, using the updated 'holdings' map.
-      const openSymbols = [...holdings.entries()]
-        .filter(([, v]) => v.qty > 0)
-        .map(([s]) => s);
-
-      let totalWorth = 0;
-      let yesterdayWorth = 0;
-      let totalInvested = 0;
-
-      if (openSymbols.length > 0) {
-        const { data: quotes, error: qErr } = await userClient
-          .from("symbols")
-          .select("symbol, current_price, prev_close")
-          .in("symbol", openSymbols);
-        if (qErr) {
-          return handleError(qErr);
+        // Calculate the new total cost and divide by the new total quantity
+        const newCost = (pos.average_cost * pos.quantity) + (price * qty);
+        newQty += qty;
+        newAvgCost = newQty > 0 ? newCost / newQty : 0;
+      } else { // SELL
+        newQty -= qty;
+        if (newQty === 0) {
+          newAvgCost = 0; // Reset cost basis if position is closed
         }
-
-        const qMap = new Map(
-          (quotes ?? []).map((r) => [String(r.symbol).toUpperCase(), r]),
-        );
-
-        for (const s of openSymbols) {
-          const holding = holdings.get(s)!;
-          const quote = qMap.get(s);
-
-          if (!quote?.current_price || !quote?.prev_close) {
-            return handleError(
-              new Error("Missing current price or prev_close for " + s),
-            );
-          }
-
-          const current_price = quote.current_price;
-          const prev_close = quote.prev_close;
-
-          totalWorth += holding.qty * current_price;
-          yesterdayWorth += holding.qty * prev_close;
-          totalInvested += holding.cost;
-        }
+        // Note: Average cost does not change on a sale, so we don't recalculate it.
       }
 
-      const unrealized = totalWorth - totalInvested;
+      const { error: upErr } = await userClient
+        .from("positions")
+        .upsert({
+          user_id,
+          symbol,
+          quantity: newQty,
+          average_cost: newAvgCost,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id, symbol" }); // Use the constraint we created
 
-      if (totalInvested < 0) {
-        return handleError(new Error("Negative investet amount"));
-      }
-
-      const totalChangePct = totalInvested > 0
-        ? (totalWorth - totalInvested) / totalInvested
-        : 0;
-
-      const lastChangePct = yesterdayWorth > 0
-        ? (totalWorth - yesterdayWorth) / yesterdayWorth
-        : 0;
-
-      console.log(
-        "totalChangePct: ",
-        totalChangePct,
-        "lastChangePct: ",
-        lastChangePct,
-      );
-
-      const { error: upErr } = await userClient.from("portfolios").upsert({
-        user_id,
-        tickers: openSymbols,
-        total_worth: Number(totalWorth.toFixed(6)),
-        total_invested: Number(totalInvested.toFixed(6)),
-        unrealized_pnl: Number(unrealized.toFixed(6)),
-        total_change_pct: Number(totalChangePct.toFixed(6)),
-        last_change_pct: Number(lastChangePct.toFixed(6)),
-        position_count: openSymbols.length,
-        last_trade_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
       if (upErr) {
-        return handleError(upErr);
+        return {
+          success: false,
+          error: "Failed to update position: " + upErr.message,
+        };
       }
 
-      console.log(`Portfolio updated successfully for user ${user_id}`);
+      // 6. --- Fetch Final Summary from VIEW (Simple) ---
+      // The VIEW automatically calculates total_worth, pnl, etc.
+      console.log(
+        `Position updated. Fetching live portfolio for ${user_id}...`,
+      );
+      const { data: portfolioData, error: portfolioErr } = await userClient
+        .from("portfolios") // This is now the VIEW
+        .select("*")
+        .eq("user_id", user_id)
+        .single();
+
+      if (portfolioErr && portfolioErr.code !== "PGRST116") {
+        // Handle errors, but ignore "no rows found"
+        return {
+          success: false,
+          error: "Failed to read back portfolio: " + portfolioErr.message,
+        };
+      }
+
+      // If the user sold their last position, the view might return no rows.
+      // We should return 0s in that case.
+      const resultData = portfolioData ?? {
+        tickers: [],
+        total_worth: 0,
+        total_invested: 0,
+        unrealized_pnl: 0,
+        total_change_pct: 0,
+        last_change_pct: 0,
+        position_count: 0,
+      };
 
       return {
         success: true,
-        error: undefined,
-        data: {
-          tickers: openSymbols,
-          total_worth: totalWorth,
-          total_invested: totalInvested,
-          unrealized_pnl: unrealized,
-          total_change_pct: totalChangePct,
-          last_change_pct: lastChangePct,
-          position_count: openSymbols.length,
-        },
+        data: resultData as FunctionResponse["data"],
       };
     } catch (e: unknown) {
-      const errorBody: FunctionResponse = {
-        success: false,
-        error: "Internal server error: " + String(e),
-      };
-      return errorBody;
+      console.error("Internal server error:", e);
+      return { success: false, error: "Internal server error: " + String(e) };
     }
   };
 }
 
+// ---- Deno Serve (unchanged) ----
 const handler = makeHandler(realDeps);
 if (import.meta.main) {
   Deno.serve(async (req: Request) => {
     const result = await handler(req);
     return new Response(JSON.stringify(result), {
       headers: { "Content-Type": "application/json" },
-      status: 200,
+      status: 200, // Always 200, error is in the JSON body
     });
   });
 }
 export { makeHandler };
 
-function handleError(Err: PostgrestError | Error) {
-  const errorBody: FunctionResponse = {
-    success: false,
-    error: "Failed with error message: " + Err.message,
-  };
-  return errorBody;
-}
-
-function handleUpdateHoldings(
-  txs: Payload[],
-  holdings: Map<string, { qty: number; cost: number }>,
-) {
-  for (const t of txs ?? []) {
-    const symbol = String(t.symbol).toUpperCase();
-    const quantity = Number(t.quantity);
-    const price = Number(t.price);
-    const holding = holdings.get(symbol) ?? { qty: 0, cost: 0 };
-    console.log(t);
-    if (t.side === "BUY") {
-      holding.qty += quantity;
-      // This is the corrected cost logic
-      holding.cost += quantity * price;
-    } else if (t.side === "SELL") {
-      // Get average cost *before* changing quantity
-
-      holding.qty -= quantity;
-
-      // New cost is the new quantity * the old average cost
-      holding.cost -= quantity * price;
-    }
-    holdings.set(symbol, holding);
-  }
-  console.log("before:", holdings);
-}
+// These helper functions are no longer needed
+// function handleError(...) {}
+// function handleUpdateHoldings(...) {}

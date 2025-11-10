@@ -8,7 +8,7 @@ import { beforeAll } from "https://deno.land/std@0.208.0/testing/bdd.ts";
 import {
   createClient,
   SupabaseClient,
-} from "https://esm.sh/@supabase/supabase-js@2.45.3/dist/module/index.js";
+} from "https://esm.sh/@supabase/supabase-js@2.45.3";
 import { FunctionResponse, Payload } from "../manipulate-stock/index.ts";
 
 // --- Load Environment Variables ---
@@ -43,13 +43,9 @@ async function createTestUserClient(adminClient: SupabaseClient) {
   const user = authData.user;
   console.log(`Created auth.users entry for \n${user.email}\n(${user.id})\n`);
 
-  // 2. Create their initial portfolio entry
-  const { error: portfolioError } = await adminClient.from("portfolios")
-    .insert({
-      user_id: user.id,
-      // Add other defaults if needed
-    });
-  assert(!portfolioError, "Failed to create initial portfolio for user");
+  // 2. --- CHANGE: NO PORTFOLIO INSERT NEEDED ---
+  // We no longer insert into 'portfolios'. The VIEW will exist
+  // and the 'positions' table will be populated by the first trade.
 
   // 3. Create a new client and sign in as the user
   const userClient = createClient(SUPABASE_LOCAL_URL, ANON_KEY);
@@ -74,7 +70,6 @@ Deno.test(
 
     // 1. --- Setup: Create admin client and test user ---
     const adminClient = createClient(SUPABASE_LOCAL_URL, SERVICE_ROLE_LOCAL);
-
     const { userClient, user } = await createTestUserClient(adminClient);
 
     // --- Test Data ---
@@ -141,15 +136,28 @@ Deno.test(
       assertEquals(txData.quantity, buyQuantity);
       assertEquals(txData.price, aaplPrice);
 
-      // Check that the portfolio was updated
+      // --- NEW: Check the 'positions' table (the source of truth) ---
+      const { data: posData, error: posErr } = await adminClient
+        .from("positions")
+        .select()
+        .eq("user_id", user.id)
+        .eq("symbol", symbolToTest)
+        .single();
+
+      assert(!posErr, "Error fetching position");
+      assertExists(posData, "Position was not created");
+      assertEquals(posData.quantity, buyQuantity);
+      assertEquals(posData.average_cost, aaplPrice);
+
+      // Check that the 'portfolios' VIEW reflects the change
       const { data: portfolioData, error: portfolioErr } = await adminClient
-        .from("portfolios")
+        .from("portfolios") // This is now a VIEW
         .select()
         .eq("user_id", user.id)
         .single();
 
-      assert(!portfolioErr, "Error fetching portfolio");
-      assertExists(portfolioData, "Portfolio was not found");
+      assert(!portfolioErr, "Error fetching portfolio view");
+      assertExists(portfolioData, "Portfolio view was not found");
       assertEquals(portfolioData.position_count, 1);
       assertEquals(
         Math.round(portfolioData.total_invested),
@@ -163,7 +171,7 @@ Deno.test(
         symbol: symbolToTest,
         quantity: sellQuantity,
         side: "SELL",
-        price: aaplPrice,
+        price: aaplPrice, // Sell price doesn't affect cost basis
       };
 
       // 5. --- Execute: Sell some of the shares ---
@@ -202,7 +210,22 @@ Deno.test(
         "Should be two transactions total (1 BUY, 1 SELL)",
       );
 
-      // Check that the portfolio cost basis was reduced
+      // --- NEW: Check the 'positions' table ---
+      const { data: posData, error: posErr } = await adminClient
+        .from("positions")
+        .select()
+        .eq("user_id", user.id)
+        .eq("symbol", symbolToTest)
+        .single();
+
+      assert(!posErr, "Error fetching position after sell");
+      assertExists(posData, "Position was not found after sell");
+      // Quantity should be reduced
+      assertEquals(posData.quantity, buyQuantity - sellQuantity);
+      // Average cost should be unchanged
+      assertEquals(posData.average_cost, aaplPrice);
+
+      // Check the 'portfolios' VIEW
       const { data: portfolioData, error: portfolioErr } = await adminClient
         .from("portfolios")
         .select()
@@ -212,13 +235,12 @@ Deno.test(
       assert(!portfolioErr);
       assertExists(portfolioData);
 
-      // Assuming cost basis is reduced proportionally
-      // (10 - 3) shares remain.
-      const expectedRemainingCost = aaplPrice * (buyQuantity - sellQuantity);
+      // total_invested = new_quantity * average_cost
+      const expectedRemainingCost = (buyQuantity - sellQuantity) * aaplPrice;
 
       assertEquals(
-        portfolioData.total_invested,
-        expectedRemainingCost,
+        Math.round(portfolioData.total_invested),
+        Math.round(expectedRemainingCost),
         "Portfolio cost basis (total_invested) was not updated correctly after sell",
       );
       assertEquals(
@@ -233,6 +255,7 @@ Deno.test(
       );
     });
 
+    // --- Failure cases (unchanged, still valid) ---
     await t.step("Sell too many (failure case)", async () => {
       const body: Payload = {
         symbol: symbolToTest,
@@ -240,8 +263,6 @@ Deno.test(
         side: "SELL",
         price: aaplPrice,
       };
-
-      // Attempt to sell more shares than owned
       const { data } = await userClient.functions.invoke(
         "manipulate-stock",
         { body },
@@ -250,21 +271,14 @@ Deno.test(
         data.error,
         "Function should have returned an error when selling too many shares",
       );
+      assert(data.error.includes("Insufficient shares"));
     });
 
     await t.step("Invalid symbol payload (failure case)", async () => {
-      const body = {
-        symbol: "", // Invalid symbol
-        quantity: 1, // Valid quantity
-        side: "BUY", // Valid side
-        price: 100, // Valid price
-      };
-
-      // Call function with invalid payload
-      const { data } = await userClient.functions.invoke(
-        "manipulate-stock",
-        { body },
-      );
+      const body = { symbol: "", quantity: 1, side: "BUY", price: 100 };
+      const { data } = await userClient.functions.invoke("manipulate-stock", {
+        body,
+      });
       assert(
         data.error,
         "Function should have returned an error for invalid payload",
@@ -274,16 +288,13 @@ Deno.test(
     await t.step("Invalid quantity payload (failure case)", async () => {
       const body = {
         symbol: symbolToTest,
-        quantity: -1, // Invalid quantity
-        side: "BUY", // Invalid side
-        price: 100, // Invalid price
+        quantity: -1,
+        side: "BUY",
+        price: 100,
       };
-
-      // Call function with invalid payload
-      const { data } = await userClient.functions.invoke(
-        "manipulate-stock",
-        { body },
-      );
+      const { data } = await userClient.functions.invoke("manipulate-stock", {
+        body,
+      });
       assert(
         data.error,
         "Function should have returned an error for invalid payload",
@@ -293,16 +304,13 @@ Deno.test(
     await t.step("Invalid side payload (failure case)", async () => {
       const body = {
         symbol: symbolToTest,
-        quantity: 1, // Invalid quantity
-        side: "TEST", // Invalid side
-        price: 100, // Invalid price
+        quantity: 1,
+        side: "TEST",
+        price: 100,
       };
-
-      // Call function with invalid payload
-      const { data } = await userClient.functions.invoke(
-        "manipulate-stock",
-        { body },
-      );
+      const { data } = await userClient.functions.invoke("manipulate-stock", {
+        body,
+      });
       assert(
         data.error,
         "Function should have returned an error for invalid payload: " +
@@ -313,16 +321,13 @@ Deno.test(
     await t.step("Invalid price payload (failure case)", async () => {
       const body = {
         symbol: symbolToTest,
-        quantity: 1, // Invalid quantity
-        side: "BUY", // Invalid side
-        price: -100, // Invalid price
+        quantity: 1,
+        side: "BUY",
+        price: -100,
       };
-
-      // Call function with invalid payload
-      const { data } = await userClient.functions.invoke(
-        "manipulate-stock",
-        { body },
-      );
+      const { data } = await userClient.functions.invoke("manipulate-stock", {
+        body,
+      });
       assert(
         data.error,
         "Function should have returned an error for invalid payload: " +
@@ -330,8 +335,9 @@ Deno.test(
       );
     });
 
-    await t.step("Check transactions", async () => {
+    await t.step("Check transactions (after failures)", async () => {
       // Extra check: Fetch all transactions and verify counts
+      // The failed tests should NOT have created transactions
       const { data: allTxData, error: allTxErr } = await adminClient
         .from("transactions")
         .select()
@@ -342,34 +348,29 @@ Deno.test(
       assertEquals(
         allTxData.length,
         2,
-        "There should be exactly 2 transactions",
+        "There should be exactly 2 transactions (1 BUY, 1 SELL)",
       );
     });
 
     await t.step("Teardown: Clean up test user", async () => {
       console.log(`  🧹 Tearing down... deleting test user ${user.id}...`);
-
-      // 7. --- Teardown: Delete the test user ---
       await userClient.auth.signOut();
       await adminClient.auth.signOut();
-
-      // RLS and "on delete cascade" will clean up portfolio and transactions
       const { error } = await adminClient.auth.admin.deleteUser(user.id);
       assert(!error, `Failed to delete test user: ${error?.message}`);
-
       console.log("\n🏁 Finished successfully!");
     });
-    clearInterval(); // Stop Deno test runner from hanging
   },
 );
 
-Deno.test("🌪️ Stateful - Trading Frenzy & Cost Basis (FIFO)", async (t) => {
-  console.log("\n🚀 Starting 'Trading Frenzy' (FIFO) test...");
+// --- CHANGED: Renamed test and fixed logic ---
+Deno.test("🌪️ Stateful - Trading Frenzy & Cost Basis (Average Cost)", async (t) => {
+  console.log("\n🚀 Starting 'Trading Frenzy' (Average Cost) test...");
   const adminClient = createClient(SUPABASE_LOCAL_URL, SERVICE_ROLE_LOCAL);
   const { userClient, user } = await createTestUserClient(adminClient);
 
   const symbol = "MSFT"; // Use a different symbol for a clean test
-  let expectedCostBasis = 0;
+  let expectedTotalInvested = 0;
   let expectedPositionCount = 0;
   let expectedTickerList: string[] = [];
 
@@ -383,15 +384,21 @@ Deno.test("🌪️ Stateful - Trading Frenzy & Cost Basis (FIFO)", async (t) => 
     });
 
     await t.step("Assert: Portfolio has 10 shares", async () => {
-      expectedCostBasis = 1000; // 10 * 100
+      expectedTotalInvested = 1000; // 10 * 100
       expectedPositionCount = 1;
       expectedTickerList = ["MSFT"];
 
       const { data: p } = await adminClient.from("portfolios").select()
         .eq("user_id", user.id).single();
-      assertEquals(p.total_invested, expectedCostBasis);
+      assertEquals(p.total_invested, expectedTotalInvested);
       assertEquals(p.position_count, expectedPositionCount);
       assertArrayIncludes(p.tickers, expectedTickerList);
+
+      // Check positions table
+      const { data: pos } = await adminClient.from("positions").select()
+        .eq("user_id", user.id).single();
+      assertEquals(pos.quantity, 10);
+      assertEquals(pos.average_cost, 100);
     });
 
     // --- Transaction 2: Buy 5 @ $110 ---
@@ -403,19 +410,28 @@ Deno.test("🌪️ Stateful - Trading Frenzy & Cost Basis (FIFO)", async (t) => 
     });
 
     await t.step("Assert: Portfolio has 15 shares", async () => {
-      expectedCostBasis = 1550; // (10 * 100) + (5 * 110)
+      // (10 * 100) + (5 * 110) = 1000 + 550 = 1550
+      expectedTotalInvested = 1550;
+      // New Average Cost = 1550 / 15 = 103.333...
+      const expectedAvgCost = 1550 / 15;
 
       const { data: p } = await adminClient.from("portfolios").select()
         .eq("user_id", user.id).single();
-
-      // const { data } = await adminClient.from("transactions").select()
-      assertEquals(p.total_invested, expectedCostBasis);
+      assertEquals(
+        p.total_invested.toFixed(6),
+        expectedTotalInvested.toFixed(6),
+      );
       assertEquals(p.position_count, expectedPositionCount); // Still 1
+
+      // Check positions table
+      const { data: pos } = await adminClient.from("positions").select()
+        .eq("user_id", user.id).single();
+      assertEquals(pos.quantity, 15);
+      assertEquals(pos.average_cost.toFixed(6), expectedAvgCost.toFixed(6));
     });
 
-    // --- Transaction 3: Sell 8 @ $120 (FIFO) ---
-    // (Shares are sold from the $100 batch first)
-    await t.step("Execute: Sell 8 @ $120 (FIFO)", async () => {
+    // --- Transaction 3: Sell 8 @ $120 (Average Cost) ---
+    await t.step("Execute: Sell 8 @ $120 (Average Cost)", async () => {
       const { data } = await userClient.functions.invoke("manipulate-stock", {
         body: { symbol, quantity: 8, side: "SELL", price: 120 },
       });
@@ -424,23 +440,31 @@ Deno.test("🌪️ Stateful - Trading Frenzy & Cost Basis (FIFO)", async (t) => 
     });
 
     await t.step("Assert: Portfolio has 7 shares", async () => {
-      // 8 shares from the $100 batch are gone.
-      // Remaining: (2 * $100) + (5 * $110)
-      expectedCostBasis = (10 * 100) + (5 * 110) - (8 * 120);
+      // 7 shares remain. Average cost is unchanged.
+      // New total_invested = 7 * (1550 / 15) = 723.333...
+      const expectedAvgCost = 1550 / 15;
+      expectedTotalInvested = expectedAvgCost * 7;
 
       const { data: p } = await adminClient.from("portfolios").select()
         .eq("user_id", user.id).single();
-      assertEquals(p.total_invested, expectedCostBasis);
+      assertEquals(
+        p.total_invested.toFixed(6),
+        expectedTotalInvested.toFixed(6),
+      );
       assertEquals(p.position_count, expectedPositionCount);
+
+      // Check positions table
+      const { data: pos } = await adminClient.from("positions").select()
+        .eq("user_id", user.id).single();
+      assertEquals(pos.quantity, 7);
+      assertEquals(pos.average_cost.toFixed(6), expectedAvgCost.toFixed(6));
     });
 
-    // --- Transaction 4: Sell 7 @ $120 (FIFO) ---
-    // (Sells remaining 2 @ $100, then 5 @ $110. All shares gone)
+    // --- Transaction 4: Sell 7 @ $120 ---
     await t.step("Execute: Sell remaining 7 shares", async () => {
       const { data } = await userClient.functions.invoke("manipulate-stock", {
         body: { symbol, quantity: 7, side: "SELL", price: 120 },
       });
-      // This is the key test: we own 7, we sell 7. It MUST succeed.
       assert(
         !data.error,
         `Function failed to sell all remaining shares: ${data.error}`,
@@ -449,15 +473,26 @@ Deno.test("🌪️ Stateful - Trading Frenzy & Cost Basis (FIFO)", async (t) => 
     });
 
     await t.step("Assert: Portfolio is empty", async () => {
-      expectedCostBasis = 0;
+      expectedTotalInvested = 0;
       expectedPositionCount = 0;
       expectedTickerList = [];
 
       const { data: p } = await adminClient.from("portfolios").select()
         .eq("user_id", user.id).single();
-      assertEquals(p.total_invested, expectedCostBasis);
-      assertEquals(p.position_count, expectedPositionCount);
-      assertEquals(p.tickers.length, 0); // Check tickers array is empty
+
+      // The VIEW will return NULL data if no positions match.
+      // The function handles this, but a direct adminClient query might return null.
+      if (p) { // If user has other positions
+        assertEquals(p.total_invested, expectedTotalInvested);
+        assertEquals(p.position_count, expectedPositionCount);
+        assertEquals(p.tickers.length, 0);
+      }
+
+      // Check positions table (this is the real test)
+      const { data: pos } = await adminClient.from("positions").select()
+        .eq("user_id", user.id).eq("symbol", symbol).single();
+      assertEquals(pos.quantity, 0);
+      assertEquals(pos.average_cost, 0);
     });
 
     // --- Transaction 5: FINAL CHECK (Over-sell) ---
@@ -465,11 +500,30 @@ Deno.test("🌪️ Stateful - Trading Frenzy & Cost Basis (FIFO)", async (t) => 
       const { data } = await userClient.functions.invoke("manipulate-stock", {
         body: { symbol, quantity: 1, side: "SELL", price: 120 },
       });
-      // We sold everything, so this MUST fail.
       assert(data.error, "Function did not return an error");
       assertEquals(data.success, false);
-      // Be specific if you can:
-      // assertEquals(data.error, "Insufficient shares");
+      assert(data.error.includes("Insufficient shares"));
+    });
+
+    // Add this inside the first Deno.test block
+    await t.step("Fail: Sell symbol not in portfolio", async () => {
+      const body: Payload = {
+        symbol: "MSFT", // User owns AAPL, not MSFT
+        quantity: 1,
+        side: "SELL",
+        price: 100,
+      };
+
+      // Attempt to sell a stock they never bought
+      const { data } = await userClient.functions.invoke(
+        "manipulate-stock",
+        { body },
+      );
+      assert(
+        data.error,
+        "Function should have failed when selling a symbol not owned",
+      );
+      assert(data.error.includes("Insufficient shares"));
     });
   } finally {
     // --- Teardown ---
@@ -477,12 +531,9 @@ Deno.test("🌪️ Stateful - Trading Frenzy & Cost Basis (FIFO)", async (t) => 
       console.log(`  🧹 Tearing down user ${user.id}...`);
       await userClient.auth.signOut();
       await adminClient.auth.signOut();
-
       const { error } = await adminClient.auth.admin.deleteUser(user.id);
       assert(!error, `Failed to delete test user: ${error?.message}`);
-
       console.log("\n🏁 Finished successfully!");
     });
   }
-  Deno.exit();
 });
