@@ -99,15 +99,15 @@ export default function SymbolsList() {
                   <Text
                     style={[
                       styles.change,
-                      item.day_change_pct * 100 > 0
+                      item.day_change_pct > 0
                         ? styles.positive
-                        : item.day_change_pct * 100 < 0
+                        : item.day_change_pct < 0
                           ? styles.negative
                           : null,
                     ]}
                   >
-                    {item.day_change_pct * 100 > 0 ? '+' : ''}
-                    {(item.day_change_pct * 100).toFixed(2)}%
+                    {item.day_change_pct > 0 ? '+' : ''}
+                    {(item.day_change_pct).toFixed(2)}%
                   </Text>
                 )}
               </View>
