@@ -3,6 +3,10 @@
     "parser": "@typescript-eslint/parser",
     "plugins": ["@typescript-eslint"],
     "extends": ["eslint:recommended","plugin:@typescript-eslint/recommended"],
-    "ignorePatterns": ["dist","build"]
+    // ignore config files
+    "ignorePatterns": ["dist","build", "node_modules", "supabase/.env", "metro.config.js"],
+    "rules": {
+      "semi": ["error", "always"]
+    }
   }
   
