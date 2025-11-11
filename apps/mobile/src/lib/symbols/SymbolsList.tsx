@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Image,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity, // Import this for buttons
+  Alert, // Import this for feedback
+} from 'react-native';
 import { supabase } from '../auth/supabase';
 import { Database } from '../../../../../database.types';
 
@@ -13,7 +23,7 @@ function formatMarketCap(value: number | null | undefined): string {
   return `${value}`;
 }
 
-type Symbols = Database['public']['Tables']['symbols']['Row'][]
+type Symbols = Database['public']['Tables']['symbols']['Row'][];
 
 export default function SymbolsList() {
   const [symbols, setSymbols] = useState<Symbols>([]);
@@ -56,6 +66,55 @@ export default function SymbolsList() {
     }
   }, [load]);
 
+  // --- NEW: Function to handle the trade ---
+  const handleTrade = useCallback(
+    async (
+      symbol: string,
+      side: 'BUY' | 'SELL',
+      price: number | null,
+    ) => {
+      if (price === null || price === undefined) {
+        Alert.alert('Error', 'Cannot trade, price is not available.');
+        return;
+      }
+
+      // For a real app, you'd show a modal or Alert.prompt to get the quantity
+      const quantity = 1;
+
+      try {
+        // Show loading state? (Optional)
+        const { data, error } = await supabase.functions.invoke(
+          'manipulate-stock',
+          {
+            body: {
+              symbol,
+              side,
+              quantity,
+              price,
+            },
+          },
+        );
+
+        if (error) throw error;
+
+        // Our edge function returns { success: boolean, error?: string }
+        if (data.error) {
+          Alert.alert('Trade Failed', data.error);
+        } else {
+          Alert.alert(
+            'Trade Successful',
+            `Successfully ${side === 'BUY' ? 'bought' : 'sold'
+            } ${quantity} ${symbol}.`,
+          );
+          // You could also trigger a portfolio refresh here
+        }
+      } catch (err) {
+        Alert.alert('Trade Failed', (err as Error).message);
+      }
+    },
+    [],
+  );
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -73,7 +132,6 @@ export default function SymbolsList() {
       </View>
     );
   }
-
 
   return (
     <FlatList
@@ -93,7 +151,9 @@ export default function SymbolsList() {
               <Text style={styles.symbol}>{item.company_name}</Text>
               <View style={styles.priceBlock}>
                 {typeof item.current_price === 'number' && (
-                  <Text style={styles.price}>${item.current_price.toFixed(2)}</Text>
+                  <Text style={styles.price}>
+                    ${item.current_price.toFixed(2)}
+                  </Text>
                 )}
                 {typeof item.day_change_pct === 'number' && (
                   <Text
@@ -107,7 +167,7 @@ export default function SymbolsList() {
                     ]}
                   >
                     {item.day_change_pct > 0 ? '+' : ''}
-                    {(item.day_change_pct).toFixed(2)}%
+                    {item.day_change_pct.toFixed(2)}%
                   </Text>
                 )}
               </View>
@@ -116,8 +176,30 @@ export default function SymbolsList() {
               {item.symbol}
             </Text>
             {item.marketCapitalization != null && (
-              <Text style={styles.marketCap}>Mkt Cap {formatMarketCap(item.marketCapitalization)}</Text>
+              <Text style={styles.marketCap}>
+                Mkt Cap {formatMarketCap(item.marketCapitalization)}
+              </Text>
             )}
+          </View>
+
+          {/* --- NEW: Buy/Sell Buttons --- */}
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={[styles.button, styles.buyButton]}
+              onPress={() =>
+                handleTrade(item.symbol, 'BUY', item.current_price)
+              }
+            >
+              <Text style={styles.buttonText}>Buy</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, styles.sellButton]}
+              onPress={() =>
+                handleTrade(item.symbol, 'SELL', item.current_price)
+              }
+            >
+              <Text style={styles.buttonText}>Sell</Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -147,7 +229,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   meta: {
-    flex: 1,
+    flex: 1, // This makes it take up available space, pushing buttons to the right
     marginLeft: 12,
   },
   titleLine: {
@@ -200,5 +282,32 @@ const styles = StyleSheet.create({
   error: {
     color: '#dc2626',
     fontWeight: '600',
+  },
+
+  // --- NEW STYLES ---
+  actions: {
+    flexDirection: 'column',
+    justifyContent: 'space-around',
+    marginLeft: 10,
+    gap: 6, // Adds space between the buttons
+  },
+  button: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 50,
+  },
+  buyButton: {
+    backgroundColor: '#059669', // green-600
+  },
+  sellButton: {
+    backgroundColor: '#dc2626', // red-600
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 12,
   },
 });
