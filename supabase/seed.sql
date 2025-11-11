@@ -21,7 +21,7 @@ RESTART IDENTITY CASCADE;
 -- This avoids the permissions error on auth tables.
 --
 DELETE FROM auth.users WHERE id IN (
-  '00000000-0000-0000-0000-000000000001',
+  '125db4f8-2934-4eb4-a4cd-ba15be8544dc',
   '00000000-0000-0000-0000-000000000002'
 );
 
@@ -30,28 +30,28 @@ DELETE FROM auth.users WHERE id IN (
 -- Create two test users: alice@example.com and bob@example.com
 -- The password for both is 'password123'
 --
-INSERT INTO auth.users (
-  id,
-  email,
-  encrypted_password,
-  email_confirmed_at,
-  aud,
-  role
-) VALUES (
-  '00000000-0000-0000-0000-000000000001',
-  'alice@example.com',
-  crypt('password123', gen_salt('bf')),
-  NOW(),
-  'authenticated',
-  'authenticated'
-), (
-  '00000000-0000-0000-0000-000000000002',
-  'bob@example.com',
-  crypt('password123', gen_salt('bf')),
-  NOW(),
-  'authenticated',
-  'authenticated'
-);
+-- INSERT INTO auth.users (
+--   id,
+--   email,
+--   encrypted_password,
+--   email_confirmed_at,
+--   aud,
+--   role
+-- ) VALUES (
+--   '125db4f8-2934-4eb4-a4cd-ba15be8544dc',
+--   'alice@example.com',
+--   crypt('password123', gen_salt('bf')),
+--   NOW(),
+--   'authenticated',
+--   'authenticated'
+-- ), (
+--   '00000000-0000-0000-0000-000000000002',
+--   'bob@example.com',
+--   crypt('password123', gen_salt('bf')),
+--   NOW(),
+--   'authenticated',
+--   'authenticated'
+-- );
 
 --
 -- Step 4: Seed symbol_refresh_state
@@ -83,8 +83,8 @@ INSERT INTO public.transactions
 (user_id, symbol, side, quantity, price, executed_at)
 VALUES
 -- Alice's transactions
-('00000000-0000-0000-0000-000000000001', 'AMZN', 'BUY', 10, 240.00, NOW() - interval '3 days'),
-('00000000-0000-0000-0000-000000000001', 'AXP', 'BUY', 5, 350.00, NOW() - interval '2 days'),
+('125db4f8-2934-4eb4-a4cd-ba15be8544dc', 'AMZN', 'BUY', 10, 240.00, NOW() - interval '3 days'),
+('125db4f8-2934-4eb4-a4cd-ba15be8544dc', 'AXP', 'BUY', 5, 350.00, NOW() - interval '2 days'),
 -- Bob's transactions
 ('00000000-0000-0000-0000-000000000002', 'BMY', 'BUY', 100, 45.00, NOW() - interval '3 days'),
 ('00000000-0000-0000-0000-000000000002', 'BMY', 'BUY', 50, 46.00, NOW() - interval '2 days');
@@ -97,8 +97,8 @@ INSERT INTO public.positions
 (user_id, symbol, quantity, average_cost, updated_at)
 VALUES
 -- Alice's positions
-('00000000-0000-0000-0000-000000000001', 'AMZN', 10, 240.00, NOW() - interval '2 days'),
-('00000000-0000-0000-0000-000000000001', 'AXP', 5, 350.00, NOW() - interval '2 days'),
+('125db4f8-2934-4eb4-a4cd-ba15be8544dc', 'AMZN', 10, 240.00, NOW() - interval '2 days'),
+('125db4f8-2934-4eb4-a4cd-ba15be8544dc', 'AXP', 5, 350.00, NOW() - interval '2 days'),
 -- Bob's position (150 shares @ avg cost of 45.333333)
 ('00000000-0000-0000-0000-000000000002', 'BMY', 150, 45.333333, NOW() - interval '2 days');
 
@@ -113,7 +113,7 @@ VALUES
 -- Total Invested: (10 * 240) + (5 * 350) = 4150
 -- Total Worth: (10 * 249.32) + (5 * 360.49) = 2493.2 + 1802.45 = 4295.65
 -- PNL: 4295.65 - 4150 = 145.65
-('00000000-0000-0000-0000-000000000001', '2025-11-04', 4295.65, 4150.00, 145.65),
+('125db4f8-2934-4eb4-a4cd-ba15be8544dc', '2025-11-04', 4295.65, 4150.00, 145.65),
 
 -- Bob's history snapshot for 2025-11-04
 -- Total Invested: 150 * 45.333333 = 6800
