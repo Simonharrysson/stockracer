@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   RefreshControl,
@@ -7,33 +7,30 @@ import {
   View,
   ScrollView,
   Dimensions, // Import Dimensions to get screen width
-} from 'react-native';
-import { supabase } from '../auth/supabase';
-import { Database } from '../../../../../database.types';
-import { LineChart } from 'react-native-chart-kit'; // Import the chart
+} from "react-native";
+import { supabase } from "../auth/supabase";
+import { Database } from "../../../../../database.types";
+import { LineChart } from "react-native-chart-kit"; // Import the chart
 
 // Use the generated type
-type Portfolio = Database["public"]["Views"]["portfolios"]["Row"];
-// Type for our history data
-type HistoryPoint = Database["public"]["Tables"]["investment_history"]["Row"];
 
 // --- Helper Functions (now null-safe) ---
 function formatCurrency(value: number | null | undefined): string {
   const val = value ?? 0;
-  return val.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
+  return val.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
   });
 }
 
 function formatChange(
   value: number | null | undefined,
-  isPercent: boolean = false,
+  isPercent: boolean = false
 ): string {
   const val = value ?? 0;
-  const sign = val > 0 ? '+' : '';
+  const sign = val > 0 ? "+" : "";
   const formatted = isPercent ? (val * 100).toFixed(2) : val.toFixed(2);
-  const suffix = isPercent ? '%' : '';
+  const suffix = isPercent ? "%" : "";
   return `${sign}${formatted}${suffix}`;
 }
 
@@ -45,12 +42,12 @@ function getChangeStyle(value: number | null | undefined) {
 }
 
 // Get screen width for the chart
-const screenWidth = Dimensions.get('window').width;
+const screenWidth = Dimensions.get("window").width;
 
 // --- Component ---
 export default function PortfolioScreen() {
-  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
-  const [history, setHistory] = useState<HistoryPoint[]>([]); // State for history
+  const [portfolio, setPortfolio] = useState<any | null>(null);
+  const [history, setHistory] = useState<any[]>([]); // State for history
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,21 +57,21 @@ export default function PortfolioScreen() {
 
     // Fetch portfolio and history in parallel
     const [portfolioRes, historyRes] = await Promise.all([
-      supabase.from('portfolios').select('*').single(),
+      supabase.from("portfolios").select("*").single(),
       supabase
-        .from('investment_history')
-        .select('*')
-        .order('snapshot_date', { ascending: true })
+        .from("investment_history")
+        .select("*")
+        .order("snapshot_date", { ascending: true })
         .limit(30), // Get the last 30 days
     ]);
 
     // Handle portfolio data
-    if (portfolioRes.error && portfolioRes.error.code !== 'PGRST116') {
+    if (portfolioRes.error && portfolioRes.error.code !== "PGRST116") {
       setError(portfolioRes.error.message);
       setPortfolio(null);
     } else if (portfolioRes.data) {
-      console.log(portfolioRes.data)
-      setPortfolio(portfolioRes.data as Portfolio);
+      console.log(portfolioRes.data);
+      setPortfolio(portfolioRes.data);
     } else {
       setPortfolio(null);
     }
@@ -82,7 +79,7 @@ export default function PortfolioScreen() {
     // Handle history datar
     if (historyRes.error) {
       setError(historyRes.error.message);
-      console.error(historyRes.error.message)
+      console.error(historyRes.error.message);
       setHistory([]);
     } else if (historyRes.data) {
       setHistory(historyRes.data);
@@ -114,7 +111,7 @@ export default function PortfolioScreen() {
     if (history.length === 0) {
       // Return default data to prevent chart crash
       return {
-        labels: [''],
+        labels: [""],
         datasets: [{ data: [0] }],
       };
     }
@@ -129,7 +126,7 @@ export default function PortfolioScreen() {
 
     // Ensure we have at least 2 labels for the chart to render properly
     if (labels.length === 1) {
-      labels.unshift('');
+      labels.unshift("");
       data.unshift(data[0]);
     }
 
@@ -173,10 +170,7 @@ export default function PortfolioScreen() {
   const tickers = portfolio?.tickers ?? [];
 
   const lastChangeDollars =
-    lastChangePct === 0
-      ? 0
-      : totalWorth - totalWorth / (1 + lastChangePct);
-
+    lastChangePct === 0 ? 0 : totalWorth - totalWorth / (1 + lastChangePct);
 
   return (
     <ScrollView
@@ -192,8 +186,8 @@ export default function PortfolioScreen() {
       <View style={styles.valueCard}>
         <Text style={styles.totalWorth}>{formatCurrency(totalWorth)}</Text>
         <Text style={[styles.changeLarge, getChangeStyle(lastChangeDollars)]}>
-          {formatChange(lastChangeDollars)} ({formatChange(lastChangePct, true)})
-          Today
+          {formatChange(lastChangeDollars)} ({formatChange(lastChangePct, true)}
+          ) Today
         </Text>
       </View>
 
@@ -232,9 +226,7 @@ export default function PortfolioScreen() {
         </View>
         <View style={styles.statRow}>
           <Text style={styles.statLabel}>Total Invested</Text>
-          <Text style={styles.statValue}>
-            {formatCurrency(totalInvested)}
-          </Text>
+          <Text style={styles.statValue}>{formatCurrency(totalInvested)}</Text>
         </View>
         <View style={styles.statRow}>
           <Text style={styles.statLabel}>Positions</Text>
@@ -246,7 +238,7 @@ export default function PortfolioScreen() {
       <View style={styles.tickersContainer}>
         <Text style={styles.tickersHeader}>My Positions</Text>
         {tickers.length > 0 ? (
-          tickers.map((ticker) => (
+          tickers.map((ticker: any) => (
             <View key={ticker} style={styles.tickerRow}>
               <Text style={styles.tickerSymbol}>{ticker}</Text>
             </View>
@@ -261,15 +253,15 @@ export default function PortfolioScreen() {
 
 // --- Chart style configuration ---
 const chartConfig = {
-  backgroundGradientFrom: '#ffffff',
-  backgroundGradientTo: '#ffffff',
+  backgroundGradientFrom: "#ffffff",
+  backgroundGradientTo: "#ffffff",
   color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
   labelColor: (opacity = 1) => `rgba(107, 114, 128, ${opacity})`, // gray-500
   strokeWidth: 2,
   propsForDots: {
-    r: '4',
-    strokeWidth: '2',
-    stroke: '#059669', // green-600
+    r: "4",
+    strokeWidth: "2",
+    stroke: "#059669", // green-600
   },
 };
 
@@ -282,30 +274,30 @@ const styles = StyleSheet.create({
   },
   center: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   muted: {
     marginTop: 8,
-    color: '#6b7280',
-    textAlign: 'center',
+    color: "#6b7280",
+    textAlign: "center",
   },
   error: {
-    color: '#dc2626',
-    fontWeight: '600',
+    color: "#dc2626",
+    fontWeight: "600",
   },
   headerTitle: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#111827',
+    fontWeight: "bold",
+    color: "#111827",
     marginBottom: 16,
   },
   valueCard: {
     padding: 20,
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
     borderRadius: 12,
     marginBottom: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
@@ -313,20 +305,20 @@ const styles = StyleSheet.create({
   },
   totalWorth: {
     fontSize: 32,
-    fontWeight: 'bold',
-    color: '#111827',
+    fontWeight: "bold",
+    color: "#111827",
   },
   changeLarge: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: 4,
   },
   detailsCard: {
     padding: 20,
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
     borderRadius: 12,
     marginBottom: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
@@ -334,58 +326,58 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#111827',
+    fontWeight: "bold",
+    color: "#111827",
     marginBottom: 10,
   },
   statRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#e5e7eb',
+    borderTopColor: "#e5e7eb",
   },
   statLabel: {
     fontSize: 16,
-    color: '#374151',
+    color: "#374151",
   },
   statValue: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: "600",
+    color: "#111827",
   },
   tickersContainer: {
     marginTop: 8,
   },
   tickersHeader: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#111827',
+    fontWeight: "bold",
+    color: "#111827",
     marginBottom: 8,
   },
   tickerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
     borderRadius: 8,
     marginBottom: 8,
   },
   tickerSymbol: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: "600",
+    color: "#111827",
   },
   positive: {
-    color: '#059669',
+    color: "#059669",
   },
   negative: {
-    color: '#dc2626',
+    color: "#dc2626",
   },
   neutral: {
-    color: '#6b7280',
+    color: "#6b7280",
   },
   chart: {
     marginTop: 16,

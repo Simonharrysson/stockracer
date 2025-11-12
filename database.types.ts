@@ -34,57 +34,144 @@ export type Database = {
   }
   public: {
     Tables: {
-      investment_history: {
+      game_members: {
         Row: {
-          id: number
-          snapshot_date: string
-          total_invested: number
-          total_worth: number
-          unrealized_pnl: number
+          game_id: string
+          has_used_double_down: boolean
+          joined_at: string
           user_id: string
         }
         Insert: {
-          id?: number
-          snapshot_date: string
-          total_invested: number
-          total_worth: number
-          unrealized_pnl: number
+          game_id: string
+          has_used_double_down?: boolean
+          joined_at?: string
           user_id: string
         }
         Update: {
-          id?: number
-          snapshot_date?: string
-          total_invested?: number
-          total_worth?: number
-          unrealized_pnl?: number
+          game_id?: string
+          has_used_double_down?: boolean
+          joined_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "game_members_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      positions: {
+      game_picks: {
         Row: {
-          average_cost: number
-          id: number
-          quantity: number
+          created_at: string
+          game_id: string
+          id: string
+          is_double_down: boolean
+          pick_round: number
           symbol: string
-          updated_at: string | null
           user_id: string
         }
         Insert: {
-          average_cost: number
-          id?: number
-          quantity: number
+          created_at?: string
+          game_id: string
+          id?: string
+          is_double_down?: boolean
+          pick_round: number
           symbol: string
-          updated_at?: string | null
           user_id: string
         }
         Update: {
-          average_cost?: number
-          id?: number
-          quantity?: number
+          created_at?: string
+          game_id?: string
+          id?: string
+          is_double_down?: boolean
+          pick_round?: number
           symbol?: string
-          updated_at?: string | null
           user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_picks_game_id_user_id_fkey"
+            columns: ["game_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "game_members"
+            referencedColumns: ["game_id", "user_id"]
+          },
+        ]
+      }
+      game_round_pools: {
+        Row: {
+          game_id: string
+          pick_round: number
+          symbol: string
+        }
+        Insert: {
+          game_id: string
+          pick_round: number
+          symbol: string
+        }
+        Update: {
+          game_id?: string
+          pick_round?: number
+          symbol?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_round_pools_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      games: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          current_pick_round: number
+          current_turn_user_id: string | null
+          end_time: string | null
+          id: string
+          invite_code: string
+          name: string
+          pick_deadline: string | null
+          pick_order: string[] | null
+          round_categories: string[] | null
+          start_time: string | null
+          status: Database["public"]["Enums"]["game_status"]
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          current_pick_round?: number
+          current_turn_user_id?: string | null
+          end_time?: string | null
+          id?: string
+          invite_code: string
+          name: string
+          pick_deadline?: string | null
+          pick_order?: string[] | null
+          round_categories?: string[] | null
+          start_time?: string | null
+          status?: Database["public"]["Enums"]["game_status"]
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          current_pick_round?: number
+          current_turn_user_id?: string | null
+          end_time?: string | null
+          id?: string
+          invite_code?: string
+          name?: string
+          pick_deadline?: string | null
+          pick_order?: string[] | null
+          round_categories?: string[] | null
+          start_time?: string | null
+          status?: Database["public"]["Enums"]["game_status"]
         }
         Relationships: []
       }
@@ -169,62 +256,51 @@ export type Database = {
         }
         Relationships: []
       }
-      transactions: {
-        Row: {
-          executed_at: string
-          id: string
-          inserted_at: string
-          price: number
-          quantity: number
-          side: Database["public"]["Enums"]["trade_side"]
-          symbol: string
-          user_id: string
-        }
-        Insert: {
-          executed_at?: string
-          id?: string
-          inserted_at?: string
-          price: number
-          quantity: number
-          side: Database["public"]["Enums"]["trade_side"]
-          symbol: string
-          user_id: string
-        }
-        Update: {
-          executed_at?: string
-          id?: string
-          inserted_at?: string
-          price?: number
-          quantity?: number
-          side?: Database["public"]["Enums"]["trade_side"]
-          symbol?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
     }
     Views: {
-      portfolios: {
-        Row: {
-          last_change_pct: number | null
-          last_trade_at: string | null
-          position_count: number | null
-          tickers: string[] | null
-          total_change_pct: number | null
-          total_invested: number | null
-          total_worth: number | null
-          unrealized_pnl: number | null
-          updated_at: string | null
-          user_id: string | null
-        }
-        Relationships: []
-      }
-    }
-    Functions: {
       [_ in never]: never
     }
+    Functions: {
+      create_lobby_and_add_creator: {
+        Args: { game_name: string; invite_code: string }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          current_pick_round: number
+          current_turn_user_id: string | null
+          end_time: string | null
+          id: string
+          invite_code: string
+          name: string
+          pick_deadline: string | null
+          pick_order: string[] | null
+          round_categories: string[] | null
+          start_time: string | null
+          status: Database["public"]["Enums"]["game_status"]
+        }
+        SetofOptions: {
+          from: "*"
+          to: "games"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      is_member: {
+        Args: { _game_id: string; _user_id: string }
+        Returns: boolean
+      }
+      make_pick: {
+        Args: {
+          game_id_to_pick_in: string
+          is_double_down?: boolean
+          symbol_to_pick: string
+        }
+        Returns: undefined
+      }
+      start_game: { Args: { game_id_to_start: string }; Returns: undefined }
+    }
     Enums: {
-      trade_side: "BUY" | "SELL"
+      game_status: "LOBBY" | "DRAFTING" | "ACTIVE" | "FINISHED"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -355,7 +431,7 @@ export const Constants = {
   },
   public: {
     Enums: {
-      trade_side: ["BUY", "SELL"],
+      game_status: ["LOBBY", "DRAFTING", "ACTIVE", "FINISHED"],
     },
   },
 } as const
