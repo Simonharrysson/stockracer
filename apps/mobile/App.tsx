@@ -3,14 +3,13 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Signup from './src/lib/login/Signup';
 import Login from './src/lib/login/Login';
-import SymbolsList from './src/lib/symbols/SymbolsList';
 import { supabase } from './src/lib/auth/supabase';
-import PortfolioScreen from './src/lib/investments/PortfolioScreen';
+import Home from './src/lib/game/Home';
 
 export default function App() {
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  const [tab, setTab] = useState<'stocks' | 'portfolio'>('stocks');
+  // Minimal UI: single home screen post-login
 
   useEffect(() => {
     let mounted = true;
@@ -58,31 +57,14 @@ export default function App() {
   return (
     <View style={styles.authedContainer}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{tab === 'stocks' ? 'Stocks' : 'Portfolio'}</Text>
+        <Text style={styles.headerTitle}>Home</Text>
         <TouchableOpacity onPress={() => supabase.auth.signOut()}>
           <Text style={styles.signOut}>Sign out</Text>
         </TouchableOpacity>
       </View>
-
       <View style={styles.content}>
-        {tab === 'stocks' ? <SymbolsList /> : <PortfolioScreen />}
+        <Home />
       </View>
-
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tabItem, tab === 'stocks' && styles.tabItemActive]}
-          onPress={() => setTab('stocks')}
-        >
-          <Text style={[styles.tabLabel, tab === 'stocks' && styles.tabLabelActive]}>Stocks</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tabItem, tab === 'portfolio' && styles.tabItemActive]}
-          onPress={() => setTab('portfolio')}
-        >
-          <Text style={[styles.tabLabel, tab === 'portfolio' && styles.tabLabelActive]}>Portfolio</Text>
-        </TouchableOpacity>
-      </View>
-
       <StatusBar style="auto" />
     </View>
   );
@@ -138,28 +120,5 @@ const styles = StyleSheet.create({
     color: '#2563eb',
     fontWeight: '600',
   },
-  tabBar: {
-    borderTopColor: '#e5e7eb',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: '#fff',
-  },
-  tabItem: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-  },
-  tabItemActive: {
-    backgroundColor: '#eef2ff',
-  },
-  tabLabel: {
-    color: '#374151',
-    fontWeight: '600',
-  },
-  tabLabelActive: {
-    color: '#2563eb',
-  },
+
 });
