@@ -3,7 +3,7 @@ import {
   createClient,
   SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2.45.3";
-import type { Database } from "../../../database.types.ts";
+import type { Database } from "../_shared/database.types.ts";
 
 // --- Types & Environment ---
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;

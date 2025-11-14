@@ -1,7 +1,7 @@
-import { resolve } from 'path';
-import { getDefaultConfig } from 'expo/metro-config';
+const { resolve } = require('path');
+const { getDefaultConfig } = require('expo/metro-config');
 
-const projectRoot = __dirname; 
+const projectRoot = __dirname;
 const workspaceRoot = resolve(projectRoot, '../..');
 
 const config = getDefaultConfig(projectRoot);
@@ -11,4 +11,4 @@ config.resolver.nodeModulesPaths = [
   resolve(workspaceRoot, 'node_modules'),
 ];
 
-export default config;
+module.exports = config;

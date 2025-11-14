@@ -1,1 +1,4 @@
 node_modules
+
+# Supabase environment file
+supabase/.env

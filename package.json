@@ -7,12 +7,14 @@
   ],
   "scripts": {
     "start": "npx expo start",
+    "start:local": "EXPO_APP_ENV=local npx expo start",
+    "start:prod": "EXPO_APP_ENV=prod npx expo start",
     "lint": "ESLINT_USE_FLAT_CONFIG=false eslint . && deno lint && yarn test",
     "test": "deno test --allow-all --env-file=./supabase/.env supabase/functions/tests/*",
     "typecheck": "tsc -b",
     "build": "echo ok",
     "sb:curl": "sh -c 'curl -sS -X POST ${SUPABASE_FUNCTION_URL_PREFIX:?set SUPABASE_FUNCTION_URL_PREFIX}/$npm_config_fn -H \"Content-Type: application/json\" -d \"${npm_config_data:-{}}\"'",
-    "supabase:gen-types:local": "supabase gen types typescript --local --schema public,auth,storage   > database.types.ts",
+    "types": "supabase gen types typescript --local > ./supabase/functions/_shared/database.types.ts",
     "sb:deploy:fetch-symbols": "supabase functions deploy fetch-symbols"
   },
   "devDependencies": {
