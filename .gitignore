@@ -2,3 +2,4 @@ node_modules
 
 # Supabase environment file
 supabase/.env
+apps/mobile/.env.local
