@@ -1,18 +1,24 @@
-import { useEffect, useState } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import Signup from './src/lib/login/Signup';
-import Login from './src/lib/login/Login';
-import { supabase } from './src/lib/auth/supabase';
-import Home from './src/lib/game/Home';
-import Lobby from './src/lib/lobby/lobby';
-import { palette, spacing } from './src/lib/ui/theme';
+import { useEffect, useState } from "react";
+import { StatusBar } from "expo-status-bar";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import Signup from "./src/lib/login/Signup";
+import Login from "./src/lib/login/Login";
+import { supabase } from "./src/lib/auth/supabase";
+import Home from "./src/lib/game/Home";
+import { palette, spacing } from "./src/lib/ui/theme";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import Lobby from "./src/lib/lobby/Lobby";
+import Draft from "./src/lib/draft/Draft";
 
 export type RootStackParamList = {
   Home: undefined;
   Lobby: { gameId: string; name: string; inviteCode?: string };
+  Draft: { gameId: string };
 };
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -28,9 +34,10 @@ const navTheme = {
   },
 };
 
-export default function App() {
+function AppContainer() {
+  const insets = useSafeAreaInsets();
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
 
   useEffect(() => {
     let mounted = true;
@@ -47,46 +54,79 @@ export default function App() {
     };
   }, []);
 
-  if (isAuthed === null) {
-    return <LoadingScreen />;
-  }
-
-  if (!isAuthed) {
-    return <AuthScreen mode={authMode} onToggle={() => setAuthMode((m) => (m === 'login' ? 'signup' : 'login'))} />;
-  }
+  const containerStyle = {
+    paddingTop: insets.top,
+    paddingLeft: insets.left,
+    paddingRight: insets.right,
+  };
 
   return (
-    <NavigationContainer theme={navTheme}>
-      <Stack.Navigator screenOptions={{ contentStyle: { backgroundColor: palette.background } }}>
-        <Stack.Screen
-          name="Home"
-          component={Home}
-          options={{
-            headerTitle: 'Home',
-            headerStyle: { backgroundColor: palette.background },
-            headerTitleStyle: { color: palette.textPrimary },
-            headerRight: () => (
-              <TouchableOpacity onPress={() => supabase.auth.signOut()}>
-                <Text style={styles.signOut}>Sign out</Text>
-              </TouchableOpacity>
-            ),
-            headerShadowVisible: false,
-          }}
+    <View style={[styles.safeArea, containerStyle]}>
+      {isAuthed === null ? (
+        <LoadingScreen />
+      ) : isAuthed ? (
+        <NavigationContainer theme={navTheme}>
+          <Stack.Navigator
+            screenOptions={{
+              contentStyle: { backgroundColor: palette.background },
+            }}
+          >
+            <Stack.Screen
+              name="Home"
+              component={Home}
+              options={{
+                headerTitle: "Home",
+                headerStyle: { backgroundColor: palette.background },
+                headerTitleStyle: { color: palette.textPrimary },
+                headerRight: () => (
+                  <TouchableOpacity onPress={() => supabase.auth.signOut()}>
+                    <Text style={styles.signOut}>Sign out</Text>
+                  </TouchableOpacity>
+                ),
+                headerShadowVisible: false,
+              }}
+            />
+            <Stack.Screen
+              name="Lobby"
+              component={Lobby}
+              options={{
+                headerTitle: "Lobby",
+                headerBackVisible: false,
+                headerStyle: { backgroundColor: palette.background },
+                headerTitleStyle: { color: palette.textPrimary },
+                headerShadowVisible: false,
+              }}
+            />
+            <Stack.Screen
+              name="Draft"
+              component={Draft}
+              options={{
+                headerTitle: "Draft",
+                headerStyle: { backgroundColor: palette.background },
+                headerTitleStyle: { color: palette.textPrimary },
+                headerShadowVisible: false,
+              }}
+            />
+          </Stack.Navigator>
+        </NavigationContainer>
+      ) : (
+        <AuthScreen
+          mode={authMode}
+          onToggle={() =>
+            setAuthMode((m) => (m === "login" ? "signup" : "login"))
+          }
         />
-        <Stack.Screen
-          name="Lobby"
-          component={Lobby}
-          options={{
-            headerTitle: 'Lobby',
-            headerBackVisible: false,
-            headerStyle: { backgroundColor: palette.background },
-            headerTitleStyle: { color: palette.textPrimary },
-            headerShadowVisible: false,
-          }}
-        />
-      </Stack.Navigator>
+      )}
       <StatusBar style="light" />
-    </NavigationContainer>
+    </View>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContainer />
+    </SafeAreaProvider>
   );
 }
 
@@ -99,7 +139,7 @@ function LoadingScreen() {
 }
 
 type AuthScreenProps = {
-  mode: 'login' | 'signup';
+  mode: "login" | "signup";
   onToggle: () => void;
 };
 
@@ -108,37 +148,42 @@ function AuthScreen({ mode, onToggle }: AuthScreenProps) {
     <View style={styles.authScreen}>
       <View style={styles.authHeader}>
         <Text style={styles.brand}>StockRacer</Text>
-        <Text style={styles.authTagline}>Fantasy-style drafting for real stocks</Text>
+        <Text style={styles.authTagline}>
+          Fantasy-style drafting for real stocks
+        </Text>
       </View>
-      {mode === 'login' ? <Login /> : <Signup />}
+      {mode === "login" ? <Login /> : <Signup />}
       <TouchableOpacity onPress={onToggle}>
         <Text style={styles.switchAuth}>
-          {mode === 'login'
+          {mode === "login"
             ? "Don't have an account? Sign up"
-            : 'Already have an account? Log in'}
+            : "Already have an account? Log in"}
         </Text>
       </TouchableOpacity>
-      <StatusBar style="light" />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: palette.background,
+  },
   authScreen: {
     flex: 1,
     backgroundColor: palette.background,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: spacing.xl,
     gap: spacing.lg + 4,
   },
   authHeader: {
-    alignItems: 'center',
+    alignItems: "center",
     gap: spacing.xs,
   },
   brand: {
     fontSize: 32,
-    fontWeight: '800',
+    fontWeight: "800",
     color: palette.textPrimary,
     letterSpacing: 1,
   },
@@ -147,12 +192,12 @@ const styles = StyleSheet.create({
   },
   signOut: {
     color: palette.accentBlueSoft,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   center: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: palette.background,
   },
   muted: {
@@ -160,7 +205,7 @@ const styles = StyleSheet.create({
   },
   switchAuth: {
     color: palette.accentBlueSoft,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: spacing.sm,
   },
 });

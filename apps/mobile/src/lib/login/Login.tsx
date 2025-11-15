@@ -7,17 +7,19 @@ import { palette, spacing } from '../ui/theme';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('')
   const [busy, setBusy] = useState(false);
 
   async function onLogin() {
-    if (!email.includes('@')) return Alert.alert('Invalid email');
-    if (!password) return Alert.alert('Password required');
+    if (!email.includes('@')) return setError('Invalid email');
+    if (!password) return setError('Password required');
 
     setBusy(true);
+    setError("")
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
 
-    if (error) return Alert.alert('Login failed', error.message);
+    if (error) setError(error.message)
   }
 
   return (
@@ -45,6 +47,7 @@ export default function Login() {
       </View>
 
       <Button label={busy ? 'Working…' : 'Log in'} onPress={onLogin} disabled={busy} />
+      {error && <Text style={styles.error}>{error}</Text>}
     </Card>
   );
 }
@@ -54,6 +57,9 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
     alignSelf: 'center',
+  },
+  error: {
+    color: palette.accentRed
   },
   header: {
     gap: spacing.xs,
