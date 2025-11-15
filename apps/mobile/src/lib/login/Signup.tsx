@@ -1,60 +1,82 @@
 import { useState } from 'react';
-import { Alert, TextInput, TouchableOpacity, View, Text } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { supabase } from '../auth/supabase';
+import { Button, Card, FieldLabel, Input } from '../ui/components';
+import { palette, spacing } from '../ui/theme';
 
 export default function SignUpScreen() {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [busy, setBusy] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
 
-    async function onSignUp() {
-        if (!email.includes('@')) return Alert.alert('Invalid email');
-        if (password.length < 6) return Alert.alert('Password must be ≥ 6 chars');
+  async function onSignUp() {
+    if (!email.includes('@')) return Alert.alert('Invalid email');
+    if (password.length < 6) return Alert.alert('Password must be ≥ 6 chars');
 
-        setBusy(true);
-        const { data, error } = await supabase.auth.signUp({ email, password });
-        setBusy(false);
+    setBusy(true);
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    setBusy(false);
 
-        if (error) return Alert.alert('Sign-up failed', error.message);
+    if (error) return Alert.alert('Sign-up failed', error.message);
 
-        if (data.session) {
-            Alert.alert('Signed up', 'You are signed in.');
-        } else {
-            Alert.alert('Check your email', 'Confirm your address to finish sign-up.');
-        }
+    if (data.session) {
+      Alert.alert('Signed up', 'You are signed in.');
+    } else {
+      Alert.alert('Check your email', 'Confirm your address to finish sign-up.');
     }
+  }
 
-    return (
-        <View className="flex-1 bg-zinc-900 flex items-center justify-center px-6">
-            <Text className="text-white text-2xl mb-6">Create account</Text>
+  return (
+    <Card tone="muted" padding={spacing.xl} gap={spacing.md + 2} style={styles.card}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Create account</Text>
+        <Text style={styles.subtitle}>Draft with friends in seconds</Text>
+      </View>
 
-            <TextInput
-                className="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl mb-3"
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                placeholder="email"
-                placeholderTextColor="#9ca3af"
-                value={email}
-                onChangeText={setEmail}
-            />
+      <View style={styles.field}>
+        <FieldLabel>Email</FieldLabel>
+        <Input
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+          placeholder="you@example.com"
+          value={email}
+          onChangeText={setEmail}
+        />
+      </View>
 
-            <TextInput
-                className="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl mb-4"
-                secureTextEntry
-                placeholder="password"
-                placeholderTextColor="#9ca3af"
-                value={password}
-                onChangeText={setPassword}
-            />
-
-            <TouchableOpacity
-                className="w-full bg-emerald-600 rounded-2xl py-3 items-center"
-                onPress={onSignUp}
-                disabled={busy}
-            >
-                <Text className="text-white text-base">{busy ? 'Working…' : 'Sign up'}</Text>
-            </TouchableOpacity>
-        </View>
-    );
+      <View style={styles.field}>
+        <FieldLabel>Password</FieldLabel>
+        <Input
+          secureTextEntry
+          placeholder="At least 6 characters"
+          value={password}
+          onChangeText={setPassword}
+        />
+      </View>
+      <Button label={busy ? 'Working…' : 'Create account'} onPress={onSignUp} disabled={busy} />
+    </Card>
+  );
 }
+
+const styles = StyleSheet.create({
+  card: {
+    width: '100%',
+    maxWidth: 360,
+    alignSelf: 'center',
+  },
+  header: {
+    gap: spacing.xs,
+  },
+  title: {
+    fontSize: 24,
+    color: palette.textPrimary,
+    fontWeight: '800',
+  },
+  subtitle: {
+    color: palette.textMuted,
+  },
+  field: {
+    gap: spacing.xs,
+  },
+});

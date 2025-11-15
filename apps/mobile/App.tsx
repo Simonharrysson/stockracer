@@ -1,16 +1,43 @@
-import { useEffect, useState } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Signup from './src/lib/login/Signup';
-import Login from './src/lib/login/Login';
-import SymbolsList from './src/lib/symbols/SymbolsList';
-import { supabase } from './src/lib/auth/supabase';
-import PortfolioScreen from './src/lib/investments/PortfolioScreen';
+import { useEffect, useState } from "react";
+import { StatusBar } from "expo-status-bar";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import Signup from "./src/lib/login/Signup";
+import Login from "./src/lib/login/Login";
+import { supabase } from "./src/lib/auth/supabase";
+import Home from "./src/lib/game/Home";
+import { palette, spacing } from "./src/lib/ui/theme";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import Lobby from "./src/lib/lobby/Lobby";
+import Draft from "./src/lib/draft/Draft";
 
-export default function App() {
+export type RootStackParamList = {
+  Home: undefined;
+  Lobby: { gameId: string; name: string; inviteCode?: string };
+  Draft: { gameId: string };
+};
+const Stack = createNativeStackNavigator<RootStackParamList>();
+
+const navTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: palette.background,
+    card: palette.background,
+    text: palette.textPrimary,
+    border: palette.border,
+    primary: palette.accentBlueSoft,
+  },
+};
+
+function AppContainer() {
+  const insets = useSafeAreaInsets();
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  const [tab, setTab] = useState<'stocks' | 'portfolio'>('stocks');
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
 
   useEffect(() => {
     let mounted = true;
@@ -27,139 +54,158 @@ export default function App() {
     };
   }, []);
 
-  if (isAuthed === null) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.muted}>Preparing…</Text>
-      </View>
-    );
-  }
-
-  if (!isAuthed) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.title}>StockRacer</Text>
-        {authMode === 'login' ? <Login /> : <Signup />}
-        <TouchableOpacity
-          onPress={() => setAuthMode((m) => (m === 'login' ? 'signup' : 'login'))}
-          style={{ marginTop: 16 }}
-        >
-          <Text style={styles.switchAuth}>
-            {authMode === 'login'
-              ? "Don't have an account? Sign up"
-              : 'Already have an account? Log in'}
-          </Text>
-        </TouchableOpacity>
-        <StatusBar style="auto" />
-      </View>
-    );
-  }
+  const containerStyle = {
+    paddingTop: insets.top,
+    paddingLeft: insets.left,
+    paddingRight: insets.right,
+  };
 
   return (
-    <View style={styles.authedContainer}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>{tab === 'stocks' ? 'Stocks' : 'Portfolio'}</Text>
-        <TouchableOpacity onPress={() => supabase.auth.signOut()}>
-          <Text style={styles.signOut}>Sign out</Text>
-        </TouchableOpacity>
-      </View>
+    <View style={[styles.safeArea, containerStyle]}>
+      {isAuthed === null ? (
+        <LoadingScreen />
+      ) : isAuthed ? (
+        <NavigationContainer theme={navTheme}>
+          <Stack.Navigator
+            screenOptions={{
+              contentStyle: { backgroundColor: palette.background },
+            }}
+          >
+            <Stack.Screen
+              name="Home"
+              component={Home}
+              options={{
+                headerTitle: "Home",
+                headerStyle: { backgroundColor: palette.background },
+                headerTitleStyle: { color: palette.textPrimary },
+                headerRight: () => (
+                  <TouchableOpacity onPress={() => supabase.auth.signOut()}>
+                    <Text style={styles.signOut}>Sign out</Text>
+                  </TouchableOpacity>
+                ),
+                headerShadowVisible: false,
+              }}
+            />
+            <Stack.Screen
+              name="Lobby"
+              component={Lobby}
+              options={{
+                headerTitle: "Lobby",
+                headerBackVisible: false,
+                headerStyle: { backgroundColor: palette.background },
+                headerTitleStyle: { color: palette.textPrimary },
+                headerShadowVisible: false,
+              }}
+            />
+            <Stack.Screen
+              name="Draft"
+              component={Draft}
+              options={{
+                headerTitle: "Draft",
+                headerStyle: { backgroundColor: palette.background },
+                headerTitleStyle: { color: palette.textPrimary },
+                headerShadowVisible: false,
+              }}
+            />
+          </Stack.Navigator>
+        </NavigationContainer>
+      ) : (
+        <AuthScreen
+          mode={authMode}
+          onToggle={() =>
+            setAuthMode((m) => (m === "login" ? "signup" : "login"))
+          }
+        />
+      )}
+      <StatusBar style="light" />
+    </View>
+  );
+}
 
-      <View style={styles.content}>
-        {tab === 'stocks' ? <SymbolsList /> : <PortfolioScreen />}
-      </View>
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContainer />
+    </SafeAreaProvider>
+  );
+}
 
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tabItem, tab === 'stocks' && styles.tabItemActive]}
-          onPress={() => setTab('stocks')}
-        >
-          <Text style={[styles.tabLabel, tab === 'stocks' && styles.tabLabelActive]}>Stocks</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tabItem, tab === 'portfolio' && styles.tabItemActive]}
-          onPress={() => setTab('portfolio')}
-        >
-          <Text style={[styles.tabLabel, tab === 'portfolio' && styles.tabLabelActive]}>Portfolio</Text>
-        </TouchableOpacity>
-      </View>
+function LoadingScreen() {
+  return (
+    <View style={styles.center}>
+      <Text style={styles.muted}>Preparing…</Text>
+    </View>
+  );
+}
 
-      <StatusBar style="auto" />
+type AuthScreenProps = {
+  mode: "login" | "signup";
+  onToggle: () => void;
+};
+
+function AuthScreen({ mode, onToggle }: AuthScreenProps) {
+  return (
+    <View style={styles.authScreen}>
+      <View style={styles.authHeader}>
+        <Text style={styles.brand}>StockRacer</Text>
+        <Text style={styles.authTagline}>
+          Fantasy-style drafting for real stocks
+        </Text>
+      </View>
+      {mode === "login" ? <Login /> : <Signup />}
+      <TouchableOpacity onPress={onToggle}>
+        <Text style={styles.switchAuth}>
+          {mode === "login"
+            ? "Don't have an account? Sign up"
+            : "Already have an account? Log in"}
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: palette.background,
   },
-  authedContainer: {
+  authScreen: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: palette.background,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+    gap: spacing.lg + 4,
   },
-  content: {
-    flex: 1,
+  authHeader: {
+    alignItems: "center",
+    gap: spacing.xs,
   },
-  header: {
-    paddingTop: 54,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
-    borderBottomColor: '#e5e7eb',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  brand: {
+    fontSize: 32,
+    fontWeight: "800",
+    color: palette.textPrimary,
+    letterSpacing: 1,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
+  authTagline: {
+    color: palette.textMuted,
   },
   signOut: {
-    color: '#2563eb',
-    fontWeight: '600',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 12,
+    color: palette.accentBlueSoft,
+    fontWeight: "600",
   },
   center: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: palette.background,
   },
   muted: {
-    color: '#6b7280',
+    color: palette.textSecondary,
   },
   switchAuth: {
-    color: '#2563eb',
-    fontWeight: '600',
-  },
-  tabBar: {
-    borderTopColor: '#e5e7eb',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: '#fff',
-  },
-  tabItem: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-  },
-  tabItemActive: {
-    backgroundColor: '#eef2ff',
-  },
-  tabLabel: {
-    color: '#374151',
-    fontWeight: '600',
-  },
-  tabLabelActive: {
-    color: '#2563eb',
+    color: palette.accentBlueSoft,
+    fontWeight: "600",
+    marginTop: spacing.sm,
   },
 });
