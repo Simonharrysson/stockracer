@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Alert, StyleSheet, Text, View } from "react-native";
-import { supabase } from "../auth/supabase";
+import { StyleSheet, Text, View } from "react-native";
+import { signInWithEmail } from "../auth/api";
 import { Button, Card, FieldLabel, Input } from "../ui/components";
 import { palette, spacing } from "../ui/theme";
 
@@ -16,13 +16,13 @@ export default function Login() {
 
     setBusy(true);
     setError("");
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    setBusy(false);
-
-    if (error) setError(error.message);
+    try {
+      await signInWithEmail(email, password);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to sign in");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

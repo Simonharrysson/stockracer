@@ -6,13 +6,16 @@ import {
   useReducer,
 } from "react";
 import type { ReactNode } from "react";
-import { supabase } from "../auth/supabase";
 import type { GameRow, GameState, LobbyMember, PickMap } from "./types";
-
-type MakePickResponse = {
-  success: boolean;
-  error?: string;
-};
+import {
+  fetchGameMeta,
+  fetchLobbyMembers,
+  fetchGamePicks,
+  subscribeToGameChannels,
+  startGameRpc,
+  invokeMakePick,
+  invokeDebugPickForUser,
+} from "./data";
 
 type GameContextValue = {
   gameId: string;
@@ -132,14 +135,7 @@ export function GameProvider(props: GameProviderProps) {
     dispatch({ type: "error", payload: null });
     dispatch({ type: "loading", payload: true });
     try {
-      const { data, error } = await supabase
-        .from("games")
-        .select(
-          "name, invite_code, status, round_categories, pick_order, current_pick_round, current_turn_user_id, pick_deadline",
-        )
-        .eq("id", gameId)
-        .single();
-      if (error) throw new Error(error.message);
+      const data = await fetchGameMeta(gameId);
       dispatch({
         type: "meta",
         payload: {
@@ -170,34 +166,8 @@ export function GameProvider(props: GameProviderProps) {
     dispatch({ type: "membersLoading", payload: true });
     dispatch({ type: "membersError", payload: null });
     try {
-      const { data: memberRows, error: memberError } = await supabase
-        .from("game_members")
-        .select("user_id, joined_at")
-        .eq("game_id", gameId)
-        .order("joined_at", { ascending: true });
-      if (memberError) throw new Error(memberError.message);
-      const membersList: LobbyMember[] =
-        memberRows?.map((row) => ({
-          user_id: row.user_id,
-          joined_at: row.joined_at,
-        })) ?? [];
-      if (membersList.length === 0) {
-        dispatch({ type: "members", payload: [] });
-        dispatch({ type: "membersLoading", payload: false });
-        return;
-      }
-      const { data: profileRows, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, username")
-        .in(
-          "id",
-          membersList.map((row) => row.user_id),
-        );
-      if (profileError) throw new Error(profileError.message);
-      const profileMap: Record<string, string> = {};
-      profileRows?.forEach((profile) => {
-        profileMap[profile.id] = profile.username;
-      });
+      const { members: membersList, usernames: profileMap } =
+        await fetchLobbyMembers(gameId);
       dispatch({
         type: "members",
         payload: membersList.map((member) => ({
@@ -219,20 +189,7 @@ export function GameProvider(props: GameProviderProps) {
   const refreshPicks = useCallback(async () => {
     dispatch({ type: "picksLoading", payload: true });
     try {
-      const { data, error } = await supabase
-        .from("game_picks")
-        .select(
-          "id, game_id, created_at, user_id, pick_round, symbol, is_double_down",
-        )
-        .eq("game_id", gameId)
-        .order("pick_round", { ascending: true });
-      if (error) throw new Error(error.message);
-      const map: PickMap = {};
-      data?.forEach((pick) => {
-        const round = pick.pick_round ?? 0;
-        if (!map[round]) map[round] = {};
-        map[round][pick.user_id] = pick;
-      });
+      const map = await fetchGamePicks(gameId);
       dispatch({ type: "picks", payload: map });
     } catch (err) {
       const message =
@@ -249,86 +206,32 @@ export function GameProvider(props: GameProviderProps) {
       await Promise.all([refreshGame(), refreshMembers(), refreshPicks()]);
       if (!isMounted) return;
     })();
-    const gameChannel = supabase
-      .channel(`game-${gameId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "games",
-          filter: `id=eq.${gameId}`,
-        },
-        () => {
-          void refreshGame();
-        },
-      )
-      .subscribe();
-
-    const memberChannel = supabase
-      .channel(`game-members-${gameId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "game_members",
-          filter: `game_id=eq.${gameId}`,
-        },
-        () => {
-          void refreshMembers();
-        },
-      )
-      .subscribe();
-
-    const picksChannel = supabase
-      .channel(`game-picks-${gameId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "game_picks",
-          filter: `game_id=eq.${gameId}`,
-        },
-        () => {
-          void refreshPicks();
-        },
-      )
-      .subscribe();
+    const unsubscribe = subscribeToGameChannels(gameId, {
+      onGameChange: () => {
+        void refreshGame();
+      },
+      onMemberChange: () => {
+        void refreshMembers();
+      },
+      onPickChange: () => {
+        void refreshPicks();
+      },
+    });
 
     return () => {
       isMounted = false;
-      void supabase.removeChannel(gameChannel);
-      void supabase.removeChannel(memberChannel);
-      void supabase.removeChannel(picksChannel);
+      unsubscribe();
     };
   }, [gameId, refreshGame, refreshMembers, refreshPicks]);
 
   const startGame = useCallback(async () => {
-    const { error } = await supabase.rpc("start_game", {
-      game_id_to_start: gameId,
-    });
-    if (error) throw new Error(error.message);
+    await startGameRpc(gameId);
     await refreshGame();
   }, [gameId, refreshGame]);
 
   const submitPick = useCallback(
     async (symbol: string, options?: { doubleDown?: boolean }) => {
-      const { data, error } = await supabase.functions.invoke<MakePickResponse>(
-        "make-pick",
-        {
-          body: {
-            game_id: gameId,
-            symbol,
-            is_double_down: options?.doubleDown ?? false,
-          },
-        },
-      );
-      if (error) throw new Error(error.message);
-      if (!data?.success) {
-        throw new Error(data?.error ?? "Failed to submit pick");
-      }
+      await invokeMakePick(gameId, symbol, options);
       await Promise.all([refreshPicks(), refreshGame()]);
     },
     [gameId, refreshGame, refreshPicks],
@@ -340,13 +243,7 @@ export function GameProvider(props: GameProviderProps) {
       symbol: string,
       options?: { doubleDown?: boolean },
     ) => {
-      const { error } = await supabase.rpc("debug_make_pick_for_user", {
-        game_id_to_pick_in: gameId,
-        user_id_to_pick: userId,
-        symbol_to_pick: symbol,
-        is_double_down: options?.doubleDown ?? false,
-      });
-      if (error) throw new Error(error.message);
+      await invokeDebugPickForUser(gameId, userId, symbol, options);
       await Promise.all([refreshPicks(), refreshGame()]);
     },
     [gameId, refreshGame, refreshPicks],

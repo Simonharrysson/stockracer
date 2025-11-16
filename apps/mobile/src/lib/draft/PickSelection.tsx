@@ -10,10 +10,11 @@ import {
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../../App";
-import { supabase } from "../auth/supabase";
+import { getCurrentUserId } from "../auth/api";
 import { GameProvider, useGame } from "../game/GameContext";
 import { Button, Card, StateNotice } from "../ui/components";
 import { palette, radii, spacing } from "../ui/theme";
+import { fetchRoundOptions, type RoundOption } from "./api";
 
 export default function PickSelection() {
   const route = useRoute<RouteProp<RootStackParamList, "Pick">>();
@@ -24,12 +25,6 @@ export default function PickSelection() {
     </GameProvider>
   );
 }
-
-type RoundOption = {
-  symbol: string;
-  name: string;
-  price?: number | null;
-};
 
 type PickSelectionScreenProps = {
   round: number;
@@ -56,9 +51,7 @@ function PickSelectionScreen({ round, category }: PickSelectionScreenProps) {
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setUserId(data.user?.id ?? null);
-    });
+    getCurrentUserId().then(setUserId);
   }, []);
 
   useEffect(() => {
@@ -66,34 +59,8 @@ function PickSelectionScreen({ round, category }: PickSelectionScreenProps) {
       setLoading(true);
       setError(null);
       try {
-        const { data: poolRows, error: poolError } = await supabase
-          .from("game_round_pools")
-          .select("symbol")
-          .eq("game_id", gameId)
-          .eq("pick_round", round);
-        if (poolError) throw new Error(poolError.message);
-        const symbols = poolRows?.map((row) => row.symbol) ?? [];
-        if (symbols.length === 0) {
-          setOptions([]);
-          return;
-        }
-        const { data: symbolRows, error: symbolError } = await supabase
-          .from("symbols")
-          .select("symbol, company_name, current_price")
-          .in("symbol", symbols);
-        if (symbolError) throw new Error(symbolError.message);
-        const details = new Map(
-          symbolRows?.map((row) => [row.symbol, row]) ?? [],
-        );
-        const parsed: RoundOption[] = symbols.map((symbol) => {
-          const info = details.get(symbol);
-          return {
-            symbol,
-            name: info?.company_name ?? symbol,
-            price: info?.current_price ?? null,
-          };
-        });
-        setOptions(parsed);
+        const nextOptions = await fetchRoundOptions(gameId, round);
+        setOptions(nextOptions);
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Failed to load options";

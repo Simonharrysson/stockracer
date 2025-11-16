@@ -21,8 +21,7 @@ export type LobbyMember = {
   joined_at?: string;
 };
 
-export type GamePickRow =
-  Database["public"]["Tables"]["game_picks"]["Row"];
+export type GamePickRow = Database["public"]["Tables"]["game_picks"]["Row"];
 
 export type PickMap = Record<number, Record<string, GamePickRow>>;
 

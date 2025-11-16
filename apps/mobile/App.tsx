@@ -5,7 +5,11 @@ import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import Signup from "./src/lib/login/Signup";
 import Login from "./src/lib/login/Login";
-import { supabase } from "./src/lib/auth/supabase";
+import {
+  getSession,
+  onAuthStateChange,
+  signOut as signOutUser,
+} from "./src/lib/auth/api";
 import Home from "./src/lib/game/Home";
 import { palette, spacing } from "./src/lib/ui/theme";
 import {
@@ -49,11 +53,11 @@ function AppContainer() {
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
+    getSession().then(({ data }) => {
       if (!mounted) return;
       setIsAuthed(!!data.session);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = onAuthStateChange((_event, session) => {
       setIsAuthed(!!session);
     });
     return () => {
@@ -87,7 +91,7 @@ function AppContainer() {
                 headerStyle: { backgroundColor: palette.background },
                 headerTitleStyle: { color: palette.textPrimary },
                 headerRight: () => (
-                  <TouchableOpacity onPress={() => supabase.auth.signOut()}>
+                  <TouchableOpacity onPress={() => signOutUser()}>
                     <Text style={styles.signOut}>Sign out</Text>
                   </TouchableOpacity>
                 ),

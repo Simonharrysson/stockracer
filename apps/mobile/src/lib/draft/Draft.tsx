@@ -16,7 +16,7 @@ import {
 } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../../App";
-import { supabase } from "../auth/supabase";
+import { getCurrentUserId } from "../auth/api";
 import { GameProvider, useGame } from "../game/GameContext";
 import { palette, spacing } from "../ui/theme";
 import type { ScrollView as ScrollViewType } from "react-native";
@@ -70,9 +70,7 @@ function DraftScreen() {
   const rowScrollRefs = useRef<Record<number, ScrollViewType | null>>({});
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setUserId(data.user?.id ?? null);
-    });
+    getCurrentUserId().then(setUserId);
   }, []);
 
   useFocusEffect(

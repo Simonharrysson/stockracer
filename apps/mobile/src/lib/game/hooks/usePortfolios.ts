@@ -16,7 +16,8 @@ export function usePortfolios() {
   const loadPortfolios = useCallback(async () => {
     try {
       setError(null);
-      const { data: userData, error: userError } = await supabase.auth.getUser();
+      const { data: userData, error: userError } =
+        await supabase.auth.getUser();
       if (userError) {
         setPortfolios([]);
         setError(userError.message);
@@ -81,7 +82,8 @@ export function usePortfolios() {
   }, [loadPortfolios]);
 
   const watchedIds = useMemo(
-    () => Array.from(new Set(portfolios.map((portfolio) => portfolio.id))).sort(),
+    () =>
+      Array.from(new Set(portfolios.map((portfolio) => portfolio.id))).sort(),
     [portfolios],
   );
 

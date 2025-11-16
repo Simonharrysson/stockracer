@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { supabase } from "../auth/supabase";
 import {
   Badge,
   Button,
@@ -25,25 +24,12 @@ import { describePortfolioStatus } from "./utils/portfolio";
 import { formatShortDate } from "./utils/date";
 import { generateRandomName } from "./utils/randomName";
 import { STATUS_BADGES } from "./constants";
-
-type CreateLobbyResponse = {
-  success: boolean;
-  error?: string;
-  data?: {
-    id: string;
-    name: string;
-    invite_code: string;
-  };
-};
-
-type JoinGameResponse = {
-  success: boolean;
-  error?: string;
-  data?: {
-    game_id: string;
-    game_name: string;
-  };
-};
+import {
+  CreateLobbyResult,
+  JoinGameResult,
+  createLobby,
+  joinGame,
+} from "./api";
 
 export default function Home() {
   const goToGame = useNavigateToGame();
@@ -52,12 +38,10 @@ export default function Home() {
   const [busyCreate, setBusyCreate] = useState(false);
   const [busyJoin, setBusyJoin] = useState(false);
 
-  const [createdGame, setCreatedGame] = useState<
-    CreateLobbyResponse["data"] | null
-  >(null);
-  const [joinedGame, setJoinedGame] = useState<JoinGameResponse["data"] | null>(
+  const [createdGame, setCreatedGame] = useState<CreateLobbyResult | null>(
     null,
   );
+  const [joinedGame, setJoinedGame] = useState<JoinGameResult | null>(null);
   const {
     portfolios,
     loading: portfolioLoading,
@@ -73,20 +57,13 @@ export default function Home() {
       return Alert.alert("Name must be at least 3 characters");
     setBusyCreate(true);
     try {
-      const { data, error } = await supabase.functions.invoke("create-lobby", {
-        body: { name },
-      });
-
-      if (error) throw new Error(error.message);
-      const res = data as CreateLobbyResponse;
-      if (!res.success) throw new Error(res.error || "Failed to create lobby");
-
-      setCreatedGame(res.data!);
-      void goToGame(res.data!.id, {
+      const lobby = await createLobby(name);
+      setCreatedGame(lobby);
+      void goToGame(lobby.id, {
         statusHint: "LOBBY",
         lobbyMeta: {
-          name: res.data!.name,
-          inviteCode: res.data!.invite_code ?? undefined,
+          name: lobby.name,
+          inviteCode: lobby.invite_code ?? undefined,
         },
       });
       setJoinedGame(null);
@@ -107,15 +84,10 @@ export default function Home() {
     if (code.length < 3) return Alert.alert("Enter an invite code");
     setBusyJoin(true);
     try {
-      const { data, error } = await supabase.functions.invoke("join-game", {
-        body: { invite_code: code },
-      });
-      if (error) throw new Error(error.message);
-      const res = data as JoinGameResponse;
-      if (!res.success) throw new Error(res.error || "Failed to join game");
-      setJoinedGame(res.data!);
-      void goToGame(res.data!.game_id, {
-        lobbyMeta: { name: res.data!.game_name },
+      const joined = await joinGame(code);
+      setJoinedGame(joined);
+      void goToGame(joined.game_id, {
+        lobbyMeta: { name: joined.game_name },
       });
       setCreatedGame(null);
       void reloadPortfolios();

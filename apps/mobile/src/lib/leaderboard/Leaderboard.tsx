@@ -24,14 +24,8 @@ export default function Leaderboard() {
 }
 
 function LeaderboardScreen() {
-  const {
-    name,
-    pickOrder,
-    usernames,
-    picks,
-    membersLoading,
-    picksLoading,
-  } = useGame();
+  const { name, pickOrder, usernames, picks, membersLoading, picksLoading } =
+    useGame();
 
   const standings = useMemo(() => {
     return pickOrder.map((userId) => {
