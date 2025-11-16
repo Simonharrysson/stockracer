@@ -7,19 +7,34 @@ import { palette, spacing } from '../ui/theme';
 export default function SignUpScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function onSignUp() {
     if (!email.includes('@')) return Alert.alert('Invalid email');
     if (password.length < 6) return Alert.alert('Password must be ≥ 6 chars');
+    const trimmedUsername = username.trim();
+    if (trimmedUsername.length < 3) {
+      return Alert.alert('Username must be at least 3 characters');
+    }
 
     setBusy(true);
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { username: trimmedUsername },
+      },
+    });
     setBusy(false);
 
     if (error) return Alert.alert('Sign-up failed', error.message);
 
-    if (data.session) {
+    if (data.session && data.user) {
+      await supabase.from('profiles').insert({
+        id: data.user.id,
+        username: trimmedUsername,
+      });
       Alert.alert('Signed up', 'You are signed in.');
     } else {
       Alert.alert('Check your email', 'Confirm your address to finish sign-up.');
@@ -52,6 +67,16 @@ export default function SignUpScreen() {
           placeholder="At least 6 characters"
           value={password}
           onChangeText={setPassword}
+        />
+      </View>
+      <View style={styles.field}>
+        <FieldLabel>Username</FieldLabel>
+        <Input
+          placeholder="Unique handle"
+          value={username}
+          autoCapitalize="none"
+          autoCorrect={false}
+          onChangeText={setUsername}
         />
       </View>
       <Button label={busy ? 'Working…' : 'Create account'} onPress={onSignUp} disabled={busy} />
