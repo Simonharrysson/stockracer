@@ -5,7 +5,11 @@ import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import Signup from "./src/lib/login/Signup";
 import Login from "./src/lib/login/Login";
-import { supabase } from "./src/lib/auth/supabase";
+import {
+  getSession,
+  onAuthStateChange,
+  signOut as signOutUser,
+} from "./src/lib/auth/api";
 import Home from "./src/lib/game/Home";
 import { palette, spacing } from "./src/lib/ui/theme";
 import {
@@ -13,12 +17,20 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import Lobby from "./src/lib/lobby/Lobby";
+import PickSelection from "./src/lib/draft/PickSelection";
 import Draft from "./src/lib/draft/Draft";
+import Leaderboard from "./src/lib/leaderboard/Leaderboard";
 
 export type RootStackParamList = {
   Home: undefined;
   Lobby: { gameId: string; name: string; inviteCode?: string };
-  Draft: { gameId: string };
+  Draft: {
+    gameId: string;
+    pickOrder?: string[];
+    usernames?: Record<string, string>;
+  };
+  Pick: { gameId: string; round: number; category: string };
+  Leaderboard: { gameId: string };
 };
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -41,11 +53,11 @@ function AppContainer() {
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
+    getSession().then(({ data }) => {
       if (!mounted) return;
       setIsAuthed(!!data.session);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = onAuthStateChange((_event, session) => {
       setIsAuthed(!!session);
     });
     return () => {
@@ -79,7 +91,7 @@ function AppContainer() {
                 headerStyle: { backgroundColor: palette.background },
                 headerTitleStyle: { color: palette.textPrimary },
                 headerRight: () => (
-                  <TouchableOpacity onPress={() => supabase.auth.signOut()}>
+                  <TouchableOpacity onPress={() => signOutUser()}>
                     <Text style={styles.signOut}>Sign out</Text>
                   </TouchableOpacity>
                 ),
@@ -102,6 +114,26 @@ function AppContainer() {
               component={Draft}
               options={{
                 headerTitle: "Draft",
+                headerStyle: { backgroundColor: palette.background },
+                headerTitleStyle: { color: palette.textPrimary },
+                headerShadowVisible: false,
+              }}
+            />
+            <Stack.Screen
+              name="Pick"
+              component={PickSelection}
+              options={{
+                headerTitle: "Select Stock",
+                headerStyle: { backgroundColor: palette.background },
+                headerTitleStyle: { color: palette.textPrimary },
+                headerShadowVisible: false,
+              }}
+            />
+            <Stack.Screen
+              name="Leaderboard"
+              component={Leaderboard}
+              options={{
+                headerTitle: "Leaderboard",
                 headerStyle: { backgroundColor: palette.background },
                 headerTitleStyle: { color: palette.textPrimary },
                 headerShadowVisible: false,

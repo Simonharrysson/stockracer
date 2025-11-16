@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
+import { useState } from "react";
+import type { ReactNode } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -8,230 +8,71 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { supabase } from '../auth/supabase';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../../App';
-import type { Database } from '../../../../../supabase/functions/_shared/database.types';
-import { Badge, Button, Card, Input, SectionHeader, StateNotice } from '../ui/components';
-import { palette, radii, spacing } from '../ui/theme';
-
-type CreateLobbyResponse = {
-  success: boolean;
-  error?: string;
-  data?: {
-    id: string;
-    name: string;
-    invite_code: string;
-  };
-};
-
-type JoinGameResponse = {
-  success: boolean;
-  error?: string;
-  data?: {
-    game_id: string;
-    game_name: string;
-  };
-};
-
-type Nav = NativeStackNavigationProp<RootStackParamList, 'Home'>;
-
-type GameRow = Database['public']['Tables']['games']['Row'];
-type GamePreview = Pick<
-  GameRow,
-  'id' | 'name' | 'status' | 'invite_code' | 'current_pick_round' | 'start_time' | 'end_time'
->;
-type Portfolio = GamePreview & { joined_at: string };
-type MemberWithGame = { joined_at: string; games: GamePreview | null };
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-const STATUS_BADGES: Record<
-  GameRow['status'],
-  { label: string; bg: string; color: string; border: string }
-> = {
-  LOBBY: {
-    label: 'Lobby',
-    bg: 'rgba(251, 191, 36, 0.12)',
-    color: '#fbbf24',
-    border: 'rgba(251, 191, 36, 0.4)',
-  },
-  DRAFTING: {
-    label: 'Drafting',
-    bg: 'rgba(96, 165, 250, 0.12)',
-    color: '#93c5fd',
-    border: 'rgba(96, 165, 250, 0.4)',
-  },
-  ACTIVE: {
-    label: 'Active',
-    bg: 'rgba(16, 185, 129, 0.12)',
-    color: '#34d399',
-    border: 'rgba(16, 185, 129, 0.4)',
-  },
-  FINISHED: {
-    label: 'Finished',
-    bg: 'rgba(148, 163, 184, 0.12)',
-    color: '#cfd6e7',
-    border: 'rgba(148, 163, 184, 0.4)',
-  },
-};
-
-function formatShortDate(value?: string | null, fallback = '—') {
-  if (!value) return fallback;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return fallback;
-  const month = MONTHS[date.getMonth()];
-  if (!month) return fallback;
-  const day = date.getDate();
-  const year = date.getFullYear();
-  const currentYear = new Date().getFullYear();
-  const suffix = year === currentYear ? '' : `, ${year}`;
-  return `${month} ${day}${suffix}`;
-}
-
-function describePortfolioStatus(portfolio: Portfolio) {
-  switch (portfolio.status) {
-    case 'LOBBY':
-      return 'Share the code and get ready to draft';
-    case 'DRAFTING':
-      return `Draft round ${portfolio.current_pick_round ?? 1}`;
-    case 'ACTIVE': {
-      const started = formatShortDate(portfolio.start_time, '');
-      return started ? `Live since ${started}` : 'Live portfolio';
-    }
-    case 'FINISHED': {
-      const ended = formatShortDate(portfolio.end_time || portfolio.start_time, '');
-      return ended ? `Finished ${ended}` : 'Season finished';
-    }
-    default:
-      return '';
-  }
-}
+} from "react-native";
+import {
+  Badge,
+  Button,
+  Card,
+  Input,
+  SectionHeader,
+  StateNotice,
+} from "../ui/components";
+import { palette, radii, spacing } from "../ui/theme";
+import { usePortfolios } from "./hooks/usePortfolios";
+import { useNavigateToGame } from "./hooks/useNavigateToGame";
+import { describePortfolioStatus } from "./utils/portfolio";
+import { formatShortDate } from "./utils/date";
+import { generateRandomName } from "./utils/randomName";
+import { STATUS_BADGES } from "./constants";
+import {
+  CreateLobbyResult,
+  JoinGameResult,
+  createLobby,
+  joinGame,
+} from "./api";
 
 export default function Home() {
-  const navigation = useNavigation<Nav>();
-  const [createName, setCreateName] = useState('');
-  const [joinCode, setJoinCode] = useState('');
+  const goToGame = useNavigateToGame();
+  const [createName, setCreateName] = useState("");
+  const [joinCode, setJoinCode] = useState("");
   const [busyCreate, setBusyCreate] = useState(false);
   const [busyJoin, setBusyJoin] = useState(false);
 
-  const [createdGame, setCreatedGame] = useState<CreateLobbyResponse['data'] | null>(null);
-  const [joinedGame, setJoinedGame] = useState<JoinGameResponse['data'] | null>(null);
-  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
-  const [portfolioLoading, setPortfolioLoading] = useState(true);
-  const [portfolioRefreshing, setPortfolioRefreshing] = useState(false);
-  const [portfolioError, setPortfolioError] = useState<string | null>(null);
-
-  const loadPortfolios = useCallback(async () => {
-    try {
-      setPortfolioError(null);
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError) {
-        setPortfolios([]);
-        setPortfolioError(userError.message);
-        return;
-      }
-      const user = userData.user;
-      if (!user) {
-        setPortfolios([]);
-        return;
-      }
-      const { data, error } = await supabase
-        .from('game_members')
-        .select(
-          'joined_at, games ( id, name, status, invite_code, current_pick_round, start_time, end_time )',
-        )
-        .eq('user_id', user.id)
-        .order('joined_at', { ascending: false })
-        .returns<MemberWithGame[]>();
-
-      if (error) {
-        setPortfolioError(error.message);
-        return;
-      }
-
-      const mapped =
-        data
-          ?.map((entry) => (entry.games ? { ...entry.games, joined_at: entry.joined_at } : null))
-          .filter((entry): entry is Portfolio => entry !== null) ?? [];
-
-      setPortfolios(mapped);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unexpected error';
-      setPortfolioError(message);
-      setPortfolios([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    let isActive = true;
-    (async () => {
-      setPortfolioLoading(true);
-      try {
-        await loadPortfolios();
-      } finally {
-        if (isActive) {
-          setPortfolioLoading(false);
-        }
-      }
-    })();
-    return () => {
-      isActive = false;
-    };
-  }, [loadPortfolios]);
-
-  const refreshPortfolios = useCallback(async () => {
-    setPortfolioRefreshing(true);
-    try {
-      await loadPortfolios();
-    } finally {
-      setPortfolioRefreshing(false);
-    }
-  }, [loadPortfolios]);
+  const [createdGame, setCreatedGame] = useState<CreateLobbyResult | null>(
+    null,
+  );
+  const [joinedGame, setJoinedGame] = useState<JoinGameResult | null>(null);
+  const {
+    portfolios,
+    loading: portfolioLoading,
+    refreshing: portfolioRefreshing,
+    error: portfolioError,
+    refreshPortfolios,
+    reloadPortfolios,
+  } = usePortfolios();
 
   async function onCreate() {
     const name = createName.trim();
-    if (name.length < 3) return Alert.alert('Name must be at least 3 characters');
+    if (name.length < 3)
+      return Alert.alert("Name must be at least 3 characters");
     setBusyCreate(true);
     try {
-      const { data, error } = await supabase.functions.invoke('create-lobby', {
-        body: { name },
-      });
-
-      if (error) throw new Error(error.message);
-      const res = data as CreateLobbyResponse;
-      if (!res.success) throw new Error(res.error || 'Failed to create lobby');
-
-      setCreatedGame(res.data!);
-      navigation.navigate('Lobby', {
-        gameId: res.data!.id,
-        name: res.data!.name,
-        inviteCode: res.data!.invite_code,
+      const lobby = await createLobby(name);
+      setCreatedGame(lobby);
+      void goToGame(lobby.id, {
+        statusHint: "LOBBY",
+        lobbyMeta: {
+          name: lobby.name,
+          inviteCode: lobby.invite_code ?? undefined,
+        },
       });
       setJoinedGame(null);
-      void loadPortfolios();
-
+      void reloadPortfolios();
     } catch (e) {
-      Alert.alert('Create failed', (e as Error).message);
+      Alert.alert("Create failed", (e as Error).message);
     } finally {
       setBusyCreate(false);
     }
-  }
-
-  function generateRandomName() {
-    const ADJ = [
-      'Swift', 'Lucky', 'Bold', 'Clever', 'Brave', 'Neon', 'Turbo', 'Prime',
-      'Atomic', 'Rapid', 'Sunny', 'Fuzzy', 'Magic', 'Cosmic', 'Quantum', 'Nova',
-    ];
-    const NOUN = [
-      'Bulls', 'Bears', 'Titans', 'Rockets', 'Sharks', 'Wolves', 'Alphas',
-      'Mavericks', 'Owls', 'Falcons', 'Panthers', 'Dragons', 'Hawks', 'Racers',
-    ];
-    const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
-    const num = Math.floor(Math.random() * 900 + 100); // 100-999
-    return `${pick(ADJ)} ${pick(NOUN)} ${num}`;
   }
 
   function onRandom() {
@@ -240,31 +81,25 @@ export default function Home() {
 
   async function onJoin() {
     const code = joinCode.trim().toUpperCase();
-    if (code.length < 3) return Alert.alert('Enter an invite code');
+    if (code.length < 3) return Alert.alert("Enter an invite code");
     setBusyJoin(true);
     try {
-      const { data, error } = await supabase.functions.invoke('join-game', {
-        body: { invite_code: code },
-      });
-      if (error) throw new Error(error.message);
-      const res = data as JoinGameResponse;
-      if (!res.success) throw new Error(res.error || 'Failed to join game');
-      setJoinedGame(res.data!);
-      navigation.navigate('Lobby', {
-        gameId: res.data!.game_id,
-        name: res.data!.game_name,
+      const joined = await joinGame(code);
+      setJoinedGame(joined);
+      void goToGame(joined.game_id, {
+        lobbyMeta: { name: joined.game_name },
       });
       setCreatedGame(null);
-      void loadPortfolios();
+      void reloadPortfolios();
     } catch (e) {
-      Alert.alert('Join failed', (e as Error).message);
+      Alert.alert("Join failed", (e as Error).message);
     } finally {
       setBusyJoin(false);
     }
   }
 
   const refreshDisabled = portfolioRefreshing || portfolioLoading;
-  const refreshLabel = portfolioRefreshing ? 'Refreshing…' : 'Refresh';
+  const refreshLabel = portfolioRefreshing ? "Refreshing…" : "Refresh";
 
   const refreshButton = (
     <Button
@@ -322,10 +157,12 @@ export default function Home() {
               style={styles.portfolioCard}
               activeOpacity={0.85}
               onPress={() =>
-                navigation.navigate('Lobby', {
-                  gameId: portfolio.id,
-                  name: portfolio.name,
-                  inviteCode: portfolio.invite_code ?? undefined,
+                goToGame(portfolio.id, {
+                  statusHint: portfolio.status,
+                  lobbyMeta: {
+                    name: portfolio.name,
+                    inviteCode: portfolio.invite_code ?? undefined,
+                  },
                 })
               }
             >
@@ -333,13 +170,23 @@ export default function Home() {
                 <Text style={styles.portfolioName}>{portfolio.name}</Text>
                 <Badge
                   label={badge.label}
-                  customColors={{ bg: badge.bg, color: badge.color, border: badge.border }}
+                  customColors={{
+                    bg: badge.bg,
+                    color: badge.color,
+                    border: badge.border,
+                  }}
                 />
               </View>
-              <Text style={styles.portfolioMeta}>Joined {formatShortDate(portfolio.joined_at)}</Text>
-              <Text style={styles.portfolioSubline}>{describePortfolioStatus(portfolio)}</Text>
+              <Text style={styles.portfolioMeta}>
+                Joined {formatShortDate(portfolio.joined_at)}
+              </Text>
+              <Text style={styles.portfolioSubline}>
+                {describePortfolioStatus(portfolio)}
+              </Text>
               <View style={styles.portfolioFooter}>
-                <Text style={styles.portfolioInvite}>Invite {portfolio.invite_code ?? '—'}</Text>
+                <Text style={styles.portfolioInvite}>
+                  Invite {portfolio.invite_code ?? "—"}
+                </Text>
                 <Text style={styles.portfolioLink}>Open</Text>
               </View>
             </TouchableOpacity>
@@ -359,12 +206,19 @@ export default function Home() {
       <Text style={styles.title}>StockRacer</Text>
 
       <Card style={styles.card} padding={spacing.xl} gap={spacing.md}>
-        <SectionHeader title="Your Portfolios" subtitle="Jump back into a lobby" action={refreshButton} />
+        <SectionHeader
+          title="Your Portfolios"
+          subtitle="Jump back into a lobby"
+          action={refreshButton}
+        />
         {portfolioContent}
       </Card>
 
       <Card style={styles.card} padding={spacing.xl} gap={spacing.md}>
-        <SectionHeader title="Create Game" subtitle="Name your lobby and invite friends" />
+        <SectionHeader
+          title="Create Game"
+          subtitle="Name your lobby and invite friends"
+        />
         <View style={styles.formStack}>
           <Input
             placeholder="Lobby name"
@@ -374,7 +228,11 @@ export default function Home() {
             onChangeText={setCreateName}
           />
           <Button label="Random" variant="ghost" onPress={onRandom} />
-          <Button label={busyCreate ? 'Working…' : 'Create'} onPress={onCreate} disabled={busyCreate} />
+          <Button
+            label={busyCreate ? "Working…" : "Create"}
+            onPress={onCreate}
+            disabled={busyCreate}
+          />
 
           {createdGame && (
             <StateNotice
@@ -387,7 +245,10 @@ export default function Home() {
       </Card>
 
       <Card style={styles.card} padding={spacing.xl} gap={spacing.md}>
-        <SectionHeader title="Join Game" subtitle="Enter an invite code to hop in" />
+        <SectionHeader
+          title="Join Game"
+          subtitle="Enter an invite code to hop in"
+        />
         <View style={styles.formStack}>
           <Input
             autoCapitalize="characters"
@@ -397,7 +258,7 @@ export default function Home() {
             onChangeText={setJoinCode}
           />
           <Button
-            label={busyJoin ? 'Working…' : 'Join'}
+            label={busyJoin ? "Working…" : "Join"}
             variant="secondary"
             onPress={onJoin}
             disabled={busyJoin}
@@ -423,19 +284,18 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingTop: 80,
     paddingHorizontal: 24,
     paddingBottom: 48,
     gap: spacing.lg,
   },
   title: {
     fontSize: 30,
-    fontWeight: '800',
+    fontWeight: "800",
     color: palette.textPrimary,
     marginBottom: spacing.sm,
   },
   card: {
-    width: '100%',
+    width: "100%",
   },
   formStack: {
     gap: spacing.sm,
@@ -446,13 +306,13 @@ const styles = StyleSheet.create({
     borderColor: palette.borderMuted,
     borderRadius: radii.lg,
     padding: spacing.lg,
-    alignItems: 'center',
+    alignItems: "center",
     gap: spacing.xs,
     backgroundColor: palette.surfaceRaised,
   },
   portfolioStateText: {
     color: palette.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
   },
   portfolioList: {
     marginTop: spacing.sm,
@@ -467,14 +327,14 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   portfolioCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: spacing.sm,
   },
   portfolioName: {
     color: palette.textPrimary,
-    fontWeight: '700',
+    fontWeight: "700",
     fontSize: 16,
     flex: 1,
   },
@@ -484,22 +344,22 @@ const styles = StyleSheet.create({
   },
   portfolioSubline: {
     color: palette.textPrimary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   portfolioFooter: {
     marginTop: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   portfolioInvite: {
     color: palette.textSecondary,
     fontSize: 12,
     letterSpacing: 1,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
   },
   portfolioLink: {
     color: palette.accentBlueSoft,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 });
