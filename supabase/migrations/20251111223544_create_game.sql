@@ -23,9 +23,10 @@ create table if not exists public.games (
 
 create table if not exists public.game_members (
   game_id uuid references public.games(id) on delete cascade,
+  pnl numeric NOT NULL DEFAULT 0,
+  pnl_daily_change numeric NOT NULL DEFAULT 0,
   user_id uuid references auth.users(id) on delete cascade,
   joined_at timestamptz not null default now(),
-  has_used_double_down boolean not null default false,
   primary key (game_id, user_id)
 );
 
@@ -41,8 +42,9 @@ create table if not exists public.game_picks (
   game_id uuid not null,
   user_id uuid not null,
   pick_round smallint not null,
+  start_price numeric,
+  current_price numeric,
   symbol text not null,
-  is_double_down boolean not null default false,
   created_at timestamptz not null default now(),
   unique (game_id, user_id, pick_round),
   unique (game_id, symbol),

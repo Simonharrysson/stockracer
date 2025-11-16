@@ -46,7 +46,6 @@ function PickSelectionScreen({ round, category }: PickSelectionScreenProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [doubleDown, setDoubleDown] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -101,7 +100,7 @@ function PickSelectionScreen({ round, category }: PickSelectionScreenProps) {
     if (!selected || !canPick) return;
     setSubmitting(true);
     try {
-      await submitPick(selected, { doubleDown });
+      await submitPick(selected);
       navigation.goBack();
     } catch (err) {
       const message =
@@ -116,7 +115,7 @@ function PickSelectionScreen({ round, category }: PickSelectionScreenProps) {
     if (!selected || !currentTurnUserId) return;
     setSubmitting(true);
     try {
-      await debugPickForUser(currentTurnUserId, selected, { doubleDown });
+      await debugPickForUser(currentTurnUserId, selected);
       navigation.goBack();
     } catch (err) {
       const message =
@@ -208,30 +207,21 @@ function PickSelectionScreen({ round, category }: PickSelectionScreenProps) {
           }}
         />
       )}
-      <View style={styles.actionRow}>
-        <TouchableOpacity
-          style={[styles.toggle, doubleDown && styles.toggleActive]}
-          onPress={() => setDoubleDown((prev) => !prev)}
-          disabled={!canAct}
-        >
-          <Text style={styles.toggleLabel}>Double down</Text>
-        </TouchableOpacity>
-        <Button
-          label={
-            submitting
-              ? "Submitting…"
-              : canPick
-                ? "Submit pick"
-                : `Submit for ${
-                    currentTurnUserId
-                      ? (usernames[currentTurnUserId] ?? currentTurnUserId)
-                      : "player"
-                  }`
-          }
-          onPress={canPick ? onSubmit : onDebugSubmit}
-          disabled={!canAct || !selected || submitting}
-        />
-      </View>
+      <Button
+        label={
+          submitting
+            ? "Submitting…"
+            : canPick
+              ? "Submit pick"
+              : `Submit for ${
+                  currentTurnUserId
+                    ? (usernames[currentTurnUserId] ?? currentTurnUserId)
+                    : "player"
+                }`
+        }
+        onPress={canPick ? onSubmit : onDebugSubmit}
+        disabled={!canAct || !selected || submitting}
+      />
     </View>
   );
 }
@@ -294,21 +284,5 @@ const styles = StyleSheet.create({
   optionPrice: {
     color: palette.textPrimary,
     fontWeight: "600",
-  },
-  actionRow: {
-    gap: spacing.sm,
-  },
-  toggle: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: palette.border,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    alignItems: "center",
-  },
-  toggleActive: {
-    borderColor: palette.accentGreen,
-  },
-  toggleLabel: {
-    color: palette.textSecondary,
   },
 });

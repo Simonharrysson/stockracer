@@ -2,8 +2,7 @@
 create or replace function public.debug_make_pick_for_user(
   game_id_to_pick_in uuid,
   user_id_to_pick uuid,
-  symbol_to_pick text,
-  is_double_down boolean default false
+  symbol_to_pick text
 )
 returns void
 language plpgsql
@@ -52,8 +51,8 @@ begin
     raise exception 'Stock is not in the draft pool for this round';
   end if;
 
-  insert into public.game_picks (game_id, user_id, pick_round, symbol, is_double_down)
-  values (game_id_to_pick_in, target_user_id, current_round, symbol_to_pick, is_double_down);
+  insert into public.game_picks (game_id, user_id, pick_round, symbol)
+  values (game_id_to_pick_in, target_user_id, current_round, symbol_to_pick);
 
   current_pick_index := array_position(game_row.pick_order, target_user_id);
   member_count := array_length(game_row.pick_order, 1);
@@ -84,4 +83,4 @@ begin
 end;
 $$;
 
-grant execute on function public.debug_make_pick_for_user(uuid, uuid, text, boolean) to authenticated;
+grant execute on function public.debug_make_pick_for_user(uuid, uuid, text) to authenticated;

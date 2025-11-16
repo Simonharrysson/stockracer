@@ -1,8 +1,7 @@
 -- Temporarily relax draft deadlines until UX flow is finalized.
 create or replace function public.make_pick(
   game_id_to_pick_in uuid,
-  symbol_to_pick text,
-  is_double_down boolean default false
+  symbol_to_pick text
 )
 returns void
 language plpgsql
@@ -46,8 +45,8 @@ begin
   end if;
 
   -- 3. Insert the pick
-  insert into public.game_picks (game_id, user_id, pick_round, symbol, is_double_down)
-  values (game_id_to_pick_in, current_user_id, current_round, symbol_to_pick, is_double_down);
+  insert into public.game_picks (game_id, user_id, pick_round, symbol)
+  values (game_id_to_pick_in, current_user_id, current_round, symbol_to_pick);
 
   -- 4. Next turn
   current_pick_index := array_position(game_row.pick_order, current_user_id);

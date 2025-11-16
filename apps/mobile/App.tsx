@@ -16,10 +16,11 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import Lobby from "./src/lib/lobby/Lobby";
+import Lobby from "./src/lib/lobby/lobby";
 import PickSelection from "./src/lib/draft/PickSelection";
 import Draft from "./src/lib/draft/Draft";
 import Leaderboard from "./src/lib/leaderboard/Leaderboard";
+import PortfolioInsights from "./src/lib/leaderboard/PortfolioInsights";
 
 export type RootStackParamList = {
   Home: undefined;
@@ -31,6 +32,12 @@ export type RootStackParamList = {
   };
   Pick: { gameId: string; round: number; category: string };
   Leaderboard: { gameId: string };
+  PortfolioInsights: {
+    gameId: string;
+    userId: string;
+    username: string;
+    symbols: string[];
+  };
 };
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -57,7 +64,7 @@ function AppContainer() {
       if (!mounted) return;
       setIsAuthed(!!data.session);
     });
-    const { data: sub } = onAuthStateChange((_event, session) => {
+    const { data: sub } = onAuthStateChange(async (_event, session) => {
       setIsAuthed(!!session);
     });
     return () => {
@@ -134,6 +141,16 @@ function AppContainer() {
               component={Leaderboard}
               options={{
                 headerTitle: "Leaderboard",
+                headerStyle: { backgroundColor: palette.background },
+                headerTitleStyle: { color: palette.textPrimary },
+                headerShadowVisible: false,
+              }}
+            />
+            <Stack.Screen
+              name="PortfolioInsights"
+              component={PortfolioInsights}
+              options={{
+                headerTitle: "Portfolio insights",
                 headerStyle: { backgroundColor: palette.background },
                 headerTitleStyle: { color: palette.textPrimary },
                 headerShadowVisible: false,

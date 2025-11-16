@@ -19,6 +19,8 @@ export type LobbyMember = {
   user_id: string;
   username?: string | null;
   joined_at?: string;
+  pnl?: number;
+  pnl_daily_change?: number;
 };
 
 export type GamePickRow = Database["public"]["Tables"]["game_picks"]["Row"];

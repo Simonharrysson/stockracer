@@ -13,7 +13,6 @@ const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 type MakePickPayload = {
   game_id: string;
   symbol: string;
-  is_double_down?: boolean;
 };
 
 export interface FunctionResponse {
@@ -52,7 +51,7 @@ function makeHandler(deps: Deps) {
 
       // 2. Validate payload
       const body: MakePickPayload = await req.json();
-      const { game_id, symbol, is_double_down = false } = body;
+      const { game_id, symbol } = body;
       if (!game_id || !symbol) {
         return { success: false, error: "Missing 'game_id' or 'symbol'" };
       }
@@ -64,7 +63,6 @@ function makeHandler(deps: Deps) {
         .rpc("make_pick", {
           game_id_to_pick_in: game_id,
           symbol_to_pick: symbol,
-          is_double_down: is_double_down,
         });
 
       if (rpcError) {

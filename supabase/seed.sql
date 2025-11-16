@@ -6,20 +6,22 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 --
 -- Step 1: Truncate all PUBLIC tables
--- This is safe and we own these.
 --
 TRUNCATE 
   public.symbol_refresh_state,
-  public.symbols
+  public.symbols,
+  public.games,
+  public.game_members,
+  public.game_picks,
+  public.game_round_pools
 RESTART IDENTITY CASCADE;
 
 --
 -- Step 2: Delete ONLY the test users from auth.users
--- This avoids the permissions error on auth tables.
 --
-DELETE FROM auth.users WHERE id IN (
-  '125db4f8-2934-4eb4-a4cd-ba15be8544dc',
-  '00000000-0000-0000-0000-000000000002'
+DELETE FROM auth.users WHERE email IN (
+  'alice@example.com',
+  'bob@example.com'
 );
 
 --
@@ -27,35 +29,35 @@ DELETE FROM auth.users WHERE id IN (
 -- Create two test users: alice@example.com and bob@example.com
 -- The password for both is 'password123'
 --
--- INSERT INTO auth.users (
---   id,
---   email,
---   encrypted_password,
---   email_confirmed_at,
---   aud,
---   role
--- ) VALUES (
---   '125db4f8-2934-4eb4-a4cd-ba15be8544dc',
---   'alice@example.com',
---   crypt('password123', gen_salt('bf')),
---   NOW(),
---   'authenticated',
---   'authenticated'
--- ), (
---   '00000000-0000-0000-0000-000000000002',
---   'bob@example.com',
---   crypt('password123', gen_salt('bf')),
---   NOW(),
---   'authenticated',
---   'authenticated'
--- );
+INSERT INTO auth.users (
+  id,
+  email,
+  encrypted_password,
+  email_confirmed_at,
+  aud,
+  role
+) VALUES (
+  '125db4f8-2934-4eb4-a4cd-ba15be8544dc',
+  'alice@example.com',
+  crypt('password123', gen_salt('bf')),
+  NOW(),
+  'authenticated',
+  'authenticated'
+), (
+  '00000000-0000-0000-0000-000000000002',
+  'bob@example.com',
+  crypt('password123', gen_salt('bf')),
+  NOW(),
+  'authenticated',
+  'authenticated'
+);
 
 --
 -- Step 4: Seed symbol_refresh_state
 --
 INSERT INTO "public"."symbol_refresh_state" ("id", "next_offset", "last_run", "last_error") VALUES
-	(1, 503, '2025-11-06 01:42:30.083+00', NULL)
-ON CONFLICT (id) DO NOTHING;
+	(1, 0, '2025-11-06 01:42:30.083+00', NULL)
+ON CONFLICT (id) DO UPDATE SET next_offset = 0;
 
 
 --

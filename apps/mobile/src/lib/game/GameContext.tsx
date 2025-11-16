@@ -39,15 +39,8 @@ type GameContextValue = {
   refreshMembers: () => Promise<void>;
   refreshPicks: () => Promise<void>;
   startGame: () => Promise<void>;
-  submitPick: (
-    symbol: string,
-    options?: { doubleDown?: boolean },
-  ) => Promise<void>;
-  debugPickForUser: (
-    userId: string,
-    symbol: string,
-    options?: { doubleDown?: boolean },
-  ) => Promise<void>;
+  submitPick: (symbol: string) => Promise<void>;
+  debugPickForUser: (userId: string, symbol: string) => Promise<void>;
 };
 
 const GameContext = createContext<GameContextValue | undefined>(undefined);
@@ -230,20 +223,16 @@ export function GameProvider(props: GameProviderProps) {
   }, [gameId, refreshGame]);
 
   const submitPick = useCallback(
-    async (symbol: string, options?: { doubleDown?: boolean }) => {
-      await invokeMakePick(gameId, symbol, options);
+    async (symbol: string) => {
+      await invokeMakePick(gameId, symbol);
       await Promise.all([refreshPicks(), refreshGame()]);
     },
     [gameId, refreshGame, refreshPicks],
   );
 
   const debugPickForUser = useCallback(
-    async (
-      userId: string,
-      symbol: string,
-      options?: { doubleDown?: boolean },
-    ) => {
-      await invokeDebugPickForUser(gameId, userId, symbol, options);
+    async (userId: string, symbol: string) => {
+      await invokeDebugPickForUser(gameId, userId, symbol);
       await Promise.all([refreshPicks(), refreshGame()]);
     },
     [gameId, refreshGame, refreshPicks],

@@ -16,7 +16,7 @@ export async function fetchGameMeta(gameId: string) {
 export async function fetchLobbyMembers(gameId: string) {
   const { data: memberRows, error: memberError } = await supabase
     .from("game_members")
-    .select("user_id, joined_at")
+    .select("user_id, joined_at, pnl, pnl_daily_change")
     .eq("game_id", gameId)
     .order("joined_at", { ascending: true });
   if (memberError) throw new Error(memberError.message);
@@ -25,6 +25,8 @@ export async function fetchLobbyMembers(gameId: string) {
     memberRows?.map((row) => ({
       user_id: row.user_id,
       joined_at: row.joined_at,
+      pnl: row.pnl ?? 0,
+      pnl_daily_change: row.pnl_daily_change ?? 0,
     })) ?? [];
 
   if (members.length === 0) {
@@ -52,7 +54,7 @@ export async function fetchGamePicks(gameId: string): Promise<PickMap> {
   const { data: pickRows, error } = await supabase
     .from("game_picks")
     .select(
-      "game_id, user_id, pick_round, symbol, is_double_down, id, created_at",
+      "game_id, user_id, pick_round, symbol, id, created_at, start_price, current_price",
     )
     .eq("game_id", gameId);
   if (error) throw new Error(error.message);
@@ -136,18 +138,13 @@ type MakePickResponse = {
   error?: string;
 };
 
-export async function invokeMakePick(
-  gameId: string,
-  symbol: string,
-  options?: { doubleDown?: boolean },
-) {
+export async function invokeMakePick(gameId: string, symbol: string) {
   const { data, error } = await supabase.functions.invoke<MakePickResponse>(
     "make-pick",
     {
       body: {
         game_id: gameId,
         symbol,
-        is_double_down: options?.doubleDown ?? false,
       },
     },
   );
@@ -161,13 +158,11 @@ export async function invokeDebugPickForUser(
   gameId: string,
   userId: string,
   symbol: string,
-  options?: { doubleDown?: boolean },
 ) {
   const { error } = await supabase.rpc("debug_make_pick_for_user", {
     game_id_to_pick_in: gameId,
     user_id_to_pick: userId,
     symbol_to_pick: symbol,
-    is_double_down: options?.doubleDown ?? false,
   });
   if (error) throw new Error(error.message);
 }
