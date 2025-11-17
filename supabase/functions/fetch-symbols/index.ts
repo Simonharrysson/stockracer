@@ -8,7 +8,7 @@ const CSV_SOURCE =
   "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv";
 const FINNHUB_KEY = Deno.env.get("FINNHUB_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const SERVICE_ROLE_KEY = Deno.env.get("SERVICE_ROLE_KEY");
 const JSON_HEADERS = { "content-type": "application/json" };
 const DEFAULT_LIMIT = 2;
 const RATE_LIMIT_DELAY_MS = 1200;
@@ -31,10 +31,13 @@ function extractTickers(csvText: string): string[] {
   if (lines.length <= 1) return [];
 
   // Skip the header row and keep the first column (Symbol) from each line.
-  return lines.slice(1).map((line) => {
-    const [symbol] = line.split(",");
-    return symbol.replace(/"/g, "").trim();
-  }).filter(Boolean);
+  return lines
+    .slice(1)
+    .map((line) => {
+      const [symbol] = line.split(",");
+      return symbol.replace(/"/g, "").trim();
+    })
+    .filter(Boolean);
 }
 
 type Quote = {
@@ -50,8 +53,7 @@ type Quote = {
 
 async function fetchQuote(symbol: string): Promise<Quote> {
   if (!FINNHUB_KEY) throw new Error("FINNHUB_API_KEY is not set");
-  const url =
-    `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_KEY}`;
+  const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_KEY}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Finnhub quote ${res.status}`);
   return await res.json();
@@ -111,8 +113,7 @@ async function fetchProfile(symbol: string) {
     throw new Error("FINNHUB_API_KEY is not set");
   }
 
-  const profileUrl =
-    `https://finnhub.io/api/v1/stock/profile2?symbol=${symbol}&token=${FINNHUB_KEY}`;
+  const profileUrl = `https://finnhub.io/api/v1/stock/profile2?symbol=${symbol}&token=${FINNHUB_KEY}`;
 
   const response = await fetch(profileUrl);
   if (!response.ok) {
@@ -134,17 +135,18 @@ function formatTicker(
     typeof profile.currency === "string" && profile.currency.trim().length > 0
       ? profile.currency.trim()
       : "USD";
-  const exchange = typeof profile.exchange === "string"
-    ? profile.exchange.trim()
-    : "";
+  const exchange =
+    typeof profile.exchange === "string" ? profile.exchange.trim() : "";
   const logo = typeof profile.logo === "string" ? profile.logo.trim() : "";
-  const marketcap = typeof profile.marketCapitalization === "number"
-    ? profile.marketCapitalization
-    : null;
-  const description = typeof profile.finnhubIndustry === "string" &&
-      profile.finnhubIndustry.trim().length > 0
-    ? profile.finnhubIndustry.trim()
-    : name;
+  const marketcap =
+    typeof profile.marketCapitalization === "number"
+      ? profile.marketCapitalization
+      : null;
+  const description =
+    typeof profile.finnhubIndustry === "string" &&
+    profile.finnhubIndustry.trim().length > 0
+      ? profile.finnhubIndustry.trim()
+      : name;
 
   return {
     symbol,
@@ -159,13 +161,13 @@ function formatTicker(
 }
 
 function getSupabaseClient(): SupabaseClient {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     throw new Error(
-      "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing; cannot save to database",
+      "SUPABASE_URL or SERVICE_ROLE_KEY missing; cannot save to database",
     );
   }
 
-  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
   });
 }
@@ -254,10 +256,7 @@ Deno.serve(async (request) => {
       );
     }
 
-    const limit = Math.max(
-      1,
-      Math.min(requestedLimit, maxAvailable),
-    );
+    const limit = Math.max(1, Math.min(requestedLimit, maxAvailable));
 
     console.log("Requested limit:", requestedLimit, "Effective limit:", limit);
 
@@ -290,7 +289,7 @@ Deno.serve(async (request) => {
     );
 
     const nextOffset = shouldPersistOffset
-      ? (currentOffset + processed.length)
+      ? currentOffset + processed.length
       : currentOffset;
 
     if (shouldPersistOffset) {
@@ -300,7 +299,7 @@ Deno.serve(async (request) => {
     if (shouldPersistOffset && nextOffset < tickers.length) {
       await supabase.rpc("kick_fetch_symbols", {
         _limit: limit,
-        _auth: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"), // pass SRK directly
+        _auth: Deno.env.get("SERVICE_ROLE_KEY"), // pass SRK directly
       });
     }
 
@@ -317,7 +316,7 @@ Deno.serve(async (request) => {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    if (SUPABASE_URL && SERVICE_ROLE_KEY) {
       try {
         const supabase = getSupabaseClient();
         await updateRefreshState(supabase, undefined, message);
@@ -326,9 +325,9 @@ Deno.serve(async (request) => {
         console.error("Also failed to update error state in database", e);
       }
     }
-    return new Response(
-      JSON.stringify({ ok: false, error: message }),
-      { status: 500, headers: JSON_HEADERS },
-    );
+    return new Response(JSON.stringify({ ok: false, error: message }), {
+      status: 500,
+      headers: JSON_HEADERS,
+    });
   }
 });

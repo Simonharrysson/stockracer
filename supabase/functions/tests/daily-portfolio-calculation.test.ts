@@ -11,10 +11,8 @@ import { createTestUserClient } from "../_shared/createTestUserClient.ts";
 const SYMBOL_1 = "TEST-AAPL";
 const SYMBOL_2 = "TEST-MSFT";
 
-const SUPABASE_LOCAL_URL = Deno.env.get("EXPO_PUBLIC_SUPABASE_URL")!;
-const SERVICE_ROLE_LOCAL = Deno.env.get(
-  "EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY",
-)!;
+const SUPABASE_LOCAL_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_ROLE_LOCAL = Deno.env.get("SERVICE_ROLE_KEY")!;
 
 Deno.test(
   "daily-portfolio-calculation: calculates PNL for all members in active games",

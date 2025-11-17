@@ -6,9 +6,8 @@
     "packages/*"
   ],
   "scripts": {
-    "start": "npx expo start",
-    "start:local": "EXPO_APP_ENV=local npx expo start",
-    "start:prod": "EXPO_APP_ENV=prod npx expo start",
+    "start:local": "yarn --cwd apps/mobile start:local",
+    "start:prod": "yarn --cwd apps/mobile start:prod",
     "lint": "yarn prettier && npx eslint . && deno lint ./supabase && yarn test",
     "prettier": "npx prettier --write 'apps/mobile/src/**/*.{js,jsx,ts,tsx}'",
     "test": "deno test --allow-all --env-file=./supabase/.env supabase/functions/tests/*",
@@ -16,7 +15,8 @@
     "build": "echo ok",
     "sb:curl": "sh -c 'curl -sS -X POST ${SUPABASE_FUNCTION_URL_PREFIX:?set SUPABASE_FUNCTION_URL_PREFIX}/$npm_config_fn -H \"Content-Type: application/json\" -d \"${npm_config_data:-{}}\"'",
     "types": "supabase gen types typescript --local > ./supabase/functions/_shared/database.types.ts",
-    "sb:deploy:fetch-symbols": "supabase functions deploy fetch-symbols"
+    "sb:deploy:fetch-symbols": "supabase functions deploy fetch-symbols",
+    "deploy": "supabase link && supabase db push && supabase functions deploy"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.8.1",

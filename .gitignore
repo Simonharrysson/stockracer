@@ -3,3 +3,5 @@ node_modules
 # Supabase environment file
 supabase/.env
 apps/mobile/.env.local
+.env.prod
+.DS_Store

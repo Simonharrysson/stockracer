@@ -207,7 +207,7 @@ export function GameProvider(props: GameProviderProps) {
         void refreshMembers();
       },
       onPickChange: () => {
-        void refreshPicks();
+        void Promise.all([refreshPicks(), refreshGame()]);
       },
     });
 

@@ -8,7 +8,7 @@ import type { Database } from "../_shared/database.types.ts";
 // --- Types & Environment ---
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SERVICE_ROLE = Deno.env.get("SERVICE_ROLE_KEY")!;
 
 type JoinGamePayload = {
   invite_code: string;
@@ -48,8 +48,10 @@ function makeHandler(deps: Deps) {
       // 1. Authenticate user
       const authHeader = req.headers.get("Authorization")!;
       const userClient = deps.userClient(authHeader);
-      const { data: { user }, error: userErr } = await userClient.auth
-        .getUser();
+      const {
+        data: { user },
+        error: userErr,
+      } = await userClient.auth.getUser();
       if (userErr || !user) {
         return { success: false, error: "Unauthorized access" };
       }
@@ -81,14 +83,16 @@ function makeHandler(deps: Deps) {
       }
 
       // 5. Try to insert the user into the game (as the user)
-      const { error: memberErr } = await userClient.from("game_members")
+      const { error: memberErr } = await userClient
+        .from("game_members")
         .insert({
           game_id: game.id,
           user_id: user.id,
         });
 
       if (memberErr) {
-        if (memberErr.code === "23505") { // unique_violation
+        if (memberErr.code === "23505") {
+          // unique_violation
           return { success: false, error: "You are already in this game" };
         }
         return { success: false, error: `DB Error: ${memberErr.message}` };

@@ -14,8 +14,8 @@ Deno.serve(async (req) => {
     }
 
     const supabaseAdmin = createClient<Database>(
-      Deno.env.get("EXPO_PUBLIC_SUPABASE_URL") ?? "",
-      Deno.env.get("EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SERVICE_ROLE_KEY") ?? "",
     );
 
     // 1. Get all active games
